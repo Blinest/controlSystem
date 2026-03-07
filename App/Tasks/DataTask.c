@@ -1,4 +1,4 @@
-/*
+/**
  * @file DataTask.c
  * @brief 电机数据处理模块
  *
@@ -7,6 +7,7 @@
  */
 #include "cmsis_os.h"
 #include "usart.h"
+#include "Common/cmd_parse.h"
 void StartDataTask(void *argument)
 {
     uint8_t receive;
@@ -24,6 +25,8 @@ void StartDataTask(void *argument)
         if (osMessageQueueGet(CmdDataQueueHandle, &receive, 0, osWaitForever) == osOK)
         {
             Usart_SendString(&huart2, &receive, 1);
+        	// 进入指令解析状态机，喂入一个字节数据
+        	cmd_parse_feed_byte(receive);
         }
     }
 }

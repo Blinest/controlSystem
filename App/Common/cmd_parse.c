@@ -5,7 +5,7 @@
  * 帧格式统一为：
  *   Byte0: 帧头       - 0xAA: 电机指令; 0xBB: 传感器指令
  *   Byte1: 功能码     - 区分具体功能（单电机控制、多电机同步等）
- *   Byte2: 数据长度 L - （可选）仅当该功能需要数据时存在，表示后续数据字节数
+ *   Byte2: 数据长度 L - （可选）仅当该功能需要数据时存在，表示后续数据字节数，2^8-1=255字节上限
  *   Byte3+: 数据区    - 长度为 L 的参数区（电机地址、个数、位移等）
  *
  * 对于"无数据"的功能（例如：整体停止、多电机基于运动学启动），
@@ -14,11 +14,13 @@
 
 #include "cmd_parse.h"
 #include "usart.h"
+/* 电机相关过程函数库 */
+#include "Motor/motor.h"
+/* 传感器相关过程函数库 */
+#include "Sensor/IMU.h"
 /* 帧头定义 */
 #define FRAME_HEAD_MOTOR      0xAA    /* 电机指令帧头 */
 #define FRAME_HEAD_SENSOR     0xBB    /* 传感器指令帧头 */
-
-
 
 /* 电机功能码定义 */
 typedef enum
@@ -59,25 +61,9 @@ static CmdParseState_t s_state = CMD_STATE_HEAD; /* 当前解析状态 */
 static void cmd_reset(void);
 static void cmd_parse_and_execute(void);
 
-/* 电机相关过程函数 */
-/*
- * TODO:
- * 电机初始化函数
- * 电机使能函数
- * 单电机位置控制函数
- * 多电机位置控制函数
- * 基于运动学算法的多电机位置控制函数
- * 测试函数(自定义)
-*/
+
 
 /* 传感器相关过程函数 */
-/*
- * TODO:
- * 传感器初始化函数
- * 单传感器数据读取函数
- * 多传感器数据读取函数
- * 测试函数(自定义)
-*/
 
 
 /* 状态机相关 */
@@ -196,7 +182,6 @@ static void cmd_parse_and_execute(void)
 	uint8_t head     = s_cmdBuf[0];
 	uint8_t func     = s_cmdBuf[1];
 	uint8_t data_len = s_cmdLen;
-	uint8_t *data    = (data_len > 0) ? &s_cmdBuf[3] : NULL;
 	/* 长度安全检查：若有数据，则应保证缓冲区足够 */
 	if (data_len > 0 && (uint8_t)(3 + data_len) > CMD_BUF_SIZE)
 		return;
@@ -205,16 +190,39 @@ static void cmd_parse_and_execute(void)
 		case FRAME_HEAD_MOTOR:
 			switch (func)
 			{
-				case FUNC_MOTOR_SINGLE: // TODO: 测试函数(自定义)
+				case FUNC_MOTOR_SINGLE: // TODO: 单电机控制函数
+					// 解析数据区参数：addr + direction + distance
+					// 执行单电机控制逻辑
+
+					break;
 				case FUNC_MOTOR_KINEMATIC: // TODO: 基于运动学的电机控制函数
 				case FUNC_MOTOR_SYNC: // TODO: 多电机同步控制
-				case FUNC_MOTOR_CUSTOM: // TODO: 测试函数(自定义)
-
+				case FUNC_MOTOR_CUSTOM: // TODO: 测试函数
+				case FUNC_MOTOR_ENABLE: // TODO: 电机使能
+				case FUNC_MOTOR_STOP: // TODO: 电机停止
 				default:
 					break;
 			}
 		case FRAME_HEAD_SENSOR:
+			switch (func)
+			{
+				case FUNC_SENSOR_INIT: // TODO: 传感器初始化函数
+				case FUNC_SENSOR_SINGLE_RD: // TODO: 单传感器数据读取函数
+				case FUNC_SENSOR_MULTI_RD: // TODO: 多传感器数据读取函数
+				case FUNC_SENSOR_SELF_TEST: // TODO: 传感器自检函数
+				default:
+					break;
+			}
 		default:
 			break;
 	}
+}
+/**
+ * @brief 状态机状态重置函数
+ * @param none
+*/
+void cmd_reset() {
+	s_state = CMD_STATE_HEAD;
+	s_cmdLen = 0;
+	s_cmdIdx = 0;
 }

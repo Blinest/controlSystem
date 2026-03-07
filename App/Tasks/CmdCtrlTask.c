@@ -11,10 +11,11 @@
 #include "cmsis_os2.h"
 #include "main.h"
 #include "usart.h"
+#include "Common/cmd_parse.h"
 void StartCmdCtrlTask(void *argument)
 {
     // 测试串口用
-    uint8_t test_msg[] = "send to usart1\r\n";
+    // uint8_t test_msg[] = "send to usart1\r\n";
     uint8_t receive;
 
     for (;;)
@@ -24,7 +25,7 @@ void StartCmdCtrlTask(void *argument)
         {
             Usart_SendString(&huart1, &receive, 1);
             // 进入指令解析函数
-
+        	cmd_parse_feed_byte(receive);
         }
 
     }

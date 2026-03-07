@@ -33,10 +33,9 @@ enable_language(C ASM)
 
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME}
-        App/Types/SensorType.h
-        App/Types/CmdCtrlType.h
-        App/Common/cmd_parse.c
-        App/Common/cmd_parse.h)
+    BSP/Sensor/IMU.h
+    BSP/Sensor/IMU.c
+)
 
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
@@ -51,6 +50,10 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     App/Tasks/DataTask.c
     App/Tasks/CmdCtrlTask.c
+    App/Common/cmd_parse.c
+    APP/CR/CR.c
+    BSP/Motor/Motor.c
+
 )
 
 # Add include paths
@@ -58,6 +61,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
     App
     Drivers
+    BSP
 )
 
 # Add project symbols (macros)
