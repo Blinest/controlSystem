@@ -1,13 +1,32 @@
 //
 // Created by blin on 2026/3/7.
 //
-
+/**
+* @file motor.c
+ * @brief 电机指令处理模块
+ *
+ * 本模块提供电机指令处理功能：
+ * - motor_init()：电机初始化，初始化流程包括电机参数设置、
+ * - motor_run()：启动电机，并设置绝对目标位置
+ * - motor_position_control_snf()：
+ * - motor_emergency_stop_all()：紧急停止所有电机
+ *
+ */
 #include "Motor.h"
-
+Motor motor[MOTOR_NUM];
 //电机初始化函数
 void motor_init()
 {
 	//TODO: 初始化电机相关的GPIO、定时器、PWM等硬件资源
+	for (int i = 0; i < MOTOR_NUM; i++)
+	{
+		motor[i].id = MOTOR_ID + i;
+		motor[i].stepper_motor.daocheng = 2; // 根据丝杠导程设置，2mm
+		motor[i].stepper_motor.xifen = 128; // 平滑控制
+		motor[i].stepper_motor.step_angle = 1.8; // 步距角
+		motor[i].vel_max = 50; // 最大速度建议50rpm以下，速度过高，步进电机(FUYU35, 2025年)会出现抖动
+		motor[i].current_acc = 0; // 由于位移量较小，为提高响应速度，直接启动，不做加减速处理 (0-255)
+	}
 }
 // 电机使能函数
 void motor_enable(uint8_t addr)
@@ -38,4 +57,5 @@ void motor_kinematic_control()
 void motor_custom_control(uint8_t count, uint8_t *params)
 {
 	//TODO: 根据自定义参数格式解析控制指令，并发送相应的控制命令给指定数量的电机
+
 }

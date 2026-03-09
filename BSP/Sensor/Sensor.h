@@ -5,6 +5,8 @@
 #ifndef CONTROLSYSTEM_SENSOR_H
 #define CONTROLSYSTEM_SENSOR_H
 #include <stdint.h>
+#define SENSOR_NUM 4
+
 void sensor_init(void);
 void sensor_single_read(uint8_t sensor_id);
 void sensor_multi_read(void);

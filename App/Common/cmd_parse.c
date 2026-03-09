@@ -198,6 +198,7 @@ static void cmd_parse_and_execute(void)
 				case FUNC_MOTOR_KINEMATIC: // TODO: 基于运动学的电机控制函数
 				case FUNC_MOTOR_SYNC: // TODO: 多电机同步控制
 				case FUNC_MOTOR_CUSTOM: // TODO: 测试函数
+					break;
 				case FUNC_MOTOR_ENABLE: // TODO: 电机使能
 				case FUNC_MOTOR_STOP: // TODO: 电机停止
 				default:
