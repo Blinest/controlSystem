@@ -15,11 +15,33 @@
 #define __CMD_PARSE_H
 
 #include <stdint.h>
+#include "Motor/Motor.h"
+#include "Sensor/Sensor.h"
 
-// 喂入一字节数据，通过状态机完成状态解析
+// 喂入一字节数据，处理来自 PC 的控制指令 (0xAA/0xBB)
 void cmd_parse_feed_byte(uint8_t byte);
 
-// 重置状态机
+// 喂入一字节数据，处理来自外设的反馈数据 (0xAA)
+void cmd_parse_feed_periph_byte(uint8_t byte);
+
+// 重置控制指令解析状态机
 void cmd_parse_reset(void);
+
+// 重置外设反馈解析状态机
+void cmd_periph_reset(void);
+
+// 大端序读取 short
+int16_t read_short_be(const uint8_t* buf, uint16_t index);
+
+/**
+ * @brief 打包系统状态帧 (test_frame 格式)
+ * @param frame 存储打包后的数据缓冲区
+ * @param motor_pos 电机位置数组 [MOTOR_NUM][3]
+ * @param sensor_angle 传感器角度数组 [SENSOR_NUM][3]
+ * @param scale 缩放比例
+ * @param state 系统状态
+ * @return 打包后的总长度
+ */
+uint16_t cmd_pack_status_frame(uint8_t* frame, float motor_pos[MOTOR_NUM][3], float sensor_angle[SENSOR_NUM][3], float scale, uint8_t state);
 
 #endif /* __CMD_PARSE_H */
