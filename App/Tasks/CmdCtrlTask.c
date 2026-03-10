@@ -60,10 +60,14 @@ void StartCmdCtrlTask(void *argument)
     uint8_t receive;
 	uint32_t last_send_time = HAL_GetTick(); // 替代 millis()
 	uint8_t rx_byte;
+    uint32_t test_counter = 0; // 测试计数器
 
 	// 初始化所有数组为 0.0
 	memset(motor_pos, 0, sizeof(motor_pos));
 	memset(sensor_angle, 0, sizeof(sensor_angle));
+    
+    // 设置测试模式为 true 以发送测试数据
+    bool test_mode = true;
 
 
     for (;;)
@@ -138,59 +142,64 @@ void StartCmdCtrlTask(void *argument)
 	        erase_buffer(f_len);
 	    }
 	    // ====================================
-	    // 3. 定时向 PC 反馈状态
-	    // ====================================
-	    if (is_connected) {
-	        uint32_t current_time = HAL_GetTick();
-	        if (current_time - last_send_time >= 200) { // 5Hz 刷新率
-	            last_send_time = current_time;
+    // 3. 定时向 PC 反馈状态
+    // ====================================
+    if (is_connected || test_mode) { // 测试模式下即使未连接也发送
+        uint32_t current_time = HAL_GetTick();
+        if (current_time - last_send_time >= 200) { // 5Hz 刷新率
+            last_send_time = current_time;
 
-	            uint8_t tx_frame[256];
-	            uint16_t tx_idx = 0;
-
-	            uint8_t payload[200];
-	            uint16_t p_idx = 0;
-
-	            payload[p_idx++] = MOTOR_NUM;
-	            payload[p_idx++] = SENSOR_NUM;
-
-	            // 打包电机
-	            for (int i = 0; i < MOTOR_NUM; i++) {
-	                push_short_be(payload, &p_idx, (int16_t)(motor_pos[i][0] * 100));
-	                push_short_be(payload, &p_idx, (int16_t)(motor_pos[i][1] * 100));
-	                push_short_be(payload, &p_idx, (int16_t)(motor_pos[i][2] * 100));
-	            }
-
-	            // 打包传感器
-	            for (int i = 0; i < SENSOR_NUM; i++) {
-	                push_short_be(payload, &p_idx, (int16_t)(sensor_angle[i][0] * 100));
-	                push_short_be(payload, &p_idx, (int16_t)(sensor_angle[i][1] * 100));
-	                push_short_be(payload, &p_idx, (int16_t)(sensor_angle[i][2] * 100));
-	            }
-
-	            push_short_be(payload, &p_idx, (int16_t)(scale_val * 100));
-	            payload[p_idx++] = sys_state;
-
-	            // 组装帧头和数据
-	            tx_frame[tx_idx++] = 0xBB;
-	            tx_frame[tx_idx++] = 0x02;
-	            tx_frame[tx_idx++] = p_idx; // 长度
-
-	            for (uint16_t i = 0; i < p_idx; i++) {
-	                tx_frame[tx_idx++] = payload[i];
-	            }
-
-	            // 计算校验和
-	            uint16_t tx_sum = 0;
-	            for (uint16_t i = 0; i < tx_idx; i++) {
-	                tx_sum += tx_frame[i];
-	            }
-	            tx_frame[tx_idx++] = tx_sum & 0xFF;
-
-	            // 调用 HAL 库发送 (替代 Serial.write)
-	            HAL_UART_Transmit(&huart2, tx_frame, tx_idx, 100);
-	        }
-	    }
+            // 使用固定测试帧
+            // 帧格式: 0xBB 0x02 [长度] [MOTOR_NUM] [SENSOR_NUM] [电机数据] [传感器数据] [scale] [state] [校验和]
+            // MOTOR_NUM=3, SENSOR_NUM=4
+            // 电机数据: 3个电机 × 3轴 × 2字节 = 18字节
+            // 传感器数据: 4个传感器 × 3轴 × 2字节 = 24字节
+            // scale: 2字节, state: 1字节
+            // 总长度: 2 + 18 + 24 + 2 + 1 = 47字节 (0x2F)
+            
+            uint8_t test_frame[] = {
+                0xBB, 0x02, 0x2F,  // 帧头、功能码、长度(47)
+                0x03, 0x04,        // MOTOR_NUM=3, SENSOR_NUM=4
+                
+                // 电机1: X=10.00(0x03E8), Y=20.00(0x07D0), Z=30.00(0x0BB8)
+                0x03, 0xE8, 0x07, 0xD0, 0x0B, 0xB8,
+                
+                // 电机2: X=40.00(0x0FA0), Y=50.00(0x1388), Z=60.00(0x1770)
+                0x0F, 0xA0, 0x13, 0x88, 0x17, 0x70,
+                
+                // 电机3: X=70.00(0x1B58), Y=80.00(0x1F40), Z=90.00(0x2328)
+                0x1B, 0x58, 0x1F, 0x40, 0x23, 0x28,
+                
+                // 传感器1: X=25.00(0x09C4), Y=25.00(0x09C4), Z=25.00(0x09C4)
+                0x09, 0xC4, 0x09, 0xC4, 0x09, 0xC4,
+                
+                // 传感器2: X=25.00(0x09C4), Y=25.00(0x09C4), Z=25.00(0x09C4)
+                0x09, 0xC4, 0x09, 0xC4, 0x09, 0xC4,
+                
+                // 传感器3: X=25.00(0x09C4), Y=25.00(0x09C4), Z=25.00(0x09C4)
+                0x09, 0xC4, 0x09, 0xC4, 0x09, 0xC4,
+                
+                // 传感器4: X=25.00(0x09C4), Y=25.00(0x09C4), Z=25.00(0x09C4)
+                0x09, 0xC4, 0x09, 0xC4, 0x09, 0xC4,
+                
+                // scale=50.00(0x1388), state=1
+                0x13, 0x88, 0x01,
+                
+                // 校验和 (计算: 前面所有字节的和 & 0xFF)
+                // 校验和会在下面计算
+            };
+            
+            // 计算校验和
+            uint16_t checksum = 0;
+            for (int i = 0; i < sizeof(test_frame); i++) {
+                checksum += test_frame[i];
+            }
+            test_frame[sizeof(test_frame)] = checksum & 0xFF;
+            
+            // 发送固定测试帧
+            HAL_UART_Transmit(&huart2, test_frame, sizeof(test_frame) + 1, 100);
+        }
+    }
 	    // 每次循环延时 2 毫秒，释放 CPU 控制权给学弟的其他任务
 	    osDelay(2);
 	  }
