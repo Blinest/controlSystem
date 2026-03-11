@@ -117,17 +117,17 @@ void cmd_parse_feed_byte(uint8_t byte)
 			if (receive == FRAME_HEAD_MOTOR || receive == FRAME_HEAD_SENSOR)
 			{
 				// 解析下一个字节，并将帧头存入发送数据缓冲区
-				s_cmdBuf[0] = receive;
-				s_cmdIdx = 1;
-				s_state = CMD_STATE_FUNC;
+				s_ctrlBuf[0] = receive;
+				s_ctrlIdx = 1;
+				s_ctrlState = CMD_STATE_FUNC;
 			}
 			break;
 		/* 根据帧头进行不同的控制操作 */
 		case CMD_STATE_FUNC:
 			/* 保存功能码 */
-			s_cmdBuf[1] = receive;
-			s_cmdLen = 2;
-			if (s_cmdBuf[0] == FRAME_HEAD_MOTOR)
+			s_ctrlBuf[1] = receive;
+			s_ctrlLen = 2;
+			if (s_ctrlBuf[0] == FRAME_HEAD_MOTOR)
 			{
 				// 根据功能码执行特定动作
 				switch ((MotorFuncCode_t)receive)
@@ -139,7 +139,7 @@ void cmd_parse_feed_byte(uint8_t byte)
 						break;
 					case FUNC_MOTOR_ENABLE: // TODO: 电机使能函数
 					case FUNC_MOTOR_STOP: // TODO: 电机停止函数
-						s_cmdLen = 0;
+						s_ctrlLen = 0;
 						// 进入指令解析执行函数，本部分不提供具体的函数实现
 						cmd_parse_and_execute();
 						cmd_ctrl_reset();
@@ -234,29 +234,30 @@ void cmd_parse_feed_periph_byte(uint8_t byte)
 			s_periphState = CMD_STATE_DATA;
 			break;
 		case CMD_STATE_DATA:
+		// 数据解析
 			if (s_periphIdx < PERIPH_BUF_SIZE)
 				s_periphBuf[s_periphIdx++] = receive;
 
 			if (s_periphIdx >= (uint8_t)(3 + s_periphLen + 1)) // 帧头+功能+长度 + 数据 + 校验
 			{
+				// 字节校验，累加数据字节并取低八位
 				uint16_t sum = 0;
 				for (int i = 0; i < s_periphIdx - 1; i++) sum += s_periphBuf[i];
-				
 				if ((sum & 0xFF) == receive) {
 					uint8_t func = s_periphBuf[1];
 					if (func == 0x01 && s_periphLen == 7) {
 						uint8_t m_id = s_periphBuf[3];
 						if (m_id >= 1 && m_id <= MOTOR_NUM) {
-							motor_pos[m_id-1][0] = read_short_be(s_periphBuf, 4) / 100.0f;
-							motor_pos[m_id-1][1] = read_short_be(s_periphBuf, 6) / 100.0f;
-							motor_pos[m_id-1][2] = read_short_be(s_periphBuf, 8) / 100.0f;
+							motor_pos[m_id-1][0] = (float)read_short_be(s_periphBuf, 4) / 100.0f; // 位移
+							motor_pos[m_id-1][1] = (float)read_short_be(s_periphBuf, 6) / 100.0f; // 速度
+							motor_pos[m_id-1][2] = (float)read_short_be(s_periphBuf, 8) / 100.0f; // 加速度
 						}
 					} else if (func == 0x03 && s_periphLen == 7) {
 						uint8_t s_id = s_periphBuf[3];
 						if (s_id >= 1 && s_id <= SENSOR_NUM) {
-							sensor_angle[s_id-1][0] = read_short_be(s_periphBuf, 4) / 100.0f;
-							sensor_angle[s_id-1][1] = read_short_be(s_periphBuf, 6) / 100.0f;
-							sensor_angle[s_id-1][2] = read_short_be(s_periphBuf, 8) / 100.0f;
+							sensor_angle[s_id-1][0] = (float)read_short_be(s_periphBuf, 4) / 100.0f; // 俯仰
+							sensor_angle[s_id-1][1] = (float)read_short_be(s_periphBuf, 6) / 100.0f; // 横滚
+							sensor_angle[s_id-1][2] = (float)read_short_be(s_periphBuf, 8) / 100.0f; // 偏航
 						}
 					}
 					send_test_frame_to_queue();
@@ -352,7 +353,7 @@ uint16_t cmd_pack_status_frame(uint8_t* frame, float motor_pos[MOTOR_NUM][3], fl
     uint16_t idx = 0;
 
     frame[idx++] = 0xBB; // 帧头
-    frame[idx++] = 0x02; // 功能码
+    frame[idx++] = FUNC_SENSOR_MULTI_RD; // 功能码
     frame[idx++] = 47;   // 数据长度 (MOTOR_NUM(1) + SENSOR_NUM(1) + 18 + 24 + 2 + 1)
     frame[idx++] = MOTOR_NUM;
     frame[idx++] = SENSOR_NUM;
