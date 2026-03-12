@@ -1,9 +1,0 @@
-//
-// Created by blin on 2026/3/7.
-//
-
-#ifndef CONTROLSYSTEM_SENSORTYPE_H
-#define CONTROLSYSTEM_SENSORTYPE_H
-
-
-#endif //CONTROLSYSTEM_SENSORTYPE_H

@@ -13,10 +13,6 @@
 #include "Motor/Motor.h"
 #include "Sensor/Sensor.h"
 #include "string.h"
-
-extern osMessageQueueId_t CmdDataQueueHandle;
-extern osMessageQueueId_t SensorMessageQueueHandle;
-
 // 引用 CmdCtrlTask.c 中的全局变量
 extern float motor_pos[MOTOR_NUM][3];
 extern float sensor_angle[SENSOR_NUM][3];
@@ -25,14 +21,16 @@ extern uint8_t sys_state;
 
 // 外设解析状态机
 typedef enum {
-    PERIPH_STATE_HEAD = 0,
-    PERIPH_STATE_FUNC,
+    PERIPH_ID = 1,
+    PERIPH_STATE_FUNC = 2,
     PERIPH_STATE_LEN,
     PERIPH_STATE_DATA,
     PERIPH_STATE_CHECK
 } PeriphParseState_t;
 
-static PeriphParseState_t s_periphState = PERIPH_STATE_HEAD;
+
+
+static PeriphParseState_t s_periphState = PERIPH_ID;
 static uint8_t s_periphBuf[64];
 static uint8_t s_periphIdx = 0;
 static uint8_t s_periphLen = 0;
@@ -53,13 +51,14 @@ void send_test_frame_to_queue(void) {
 
 void StartDataTask(void *argument)
 {
-    uint8_t rx_byte;
+    MotorFeedback motor_feedback;
     uint16_t feedback_msg;
     for(;;)
     {
         // ====================================
-        // 0. 数据回传流: 从 SensorMessageQueue (已打包) 发送至 PC (USART2 TX)
+        // 0. 数据回传流:  SensorMessageQueue (已打包) 发送至 PC (USART2 TX)
         // ====================================
+
     	uint8_t test_frame[] = {
     		0xBB, 0x02, 0x34,  // 帧头、功能码、长度(52)
             0x03, 0x04,        // MOTOR_NUM=3, SENSOR_NUM=4
@@ -101,27 +100,31 @@ void StartDataTask(void *argument)
     	HAL_UART_Transmit(&huart2, test_frame, sizeof(test_frame), 100);
     	osDelay(100);
         if (osMessageQueueGet(SensorMessageQueueHandle, &feedback_msg, NULL, 0) == osOK) {
-            uint8_t b = (uint8_t)feedback_msg;
-            //HAL_UART_Transmit(&huart2, &b, 1, 10);
-        	if (true) { // 测试模式下即使未连接也发送
-            // 帧格式: 0xBB 0x02 [长度] [MOTOR_NUM] [SENSOR_NUM] [电机数据] [传感器数据] [scale] [state] [校验和]
-            // MOTOR_NUM=3, SENSOR_NUM=4
-            // 电机数据: 3个电机 × 7字节(6字节XYZ + 1字节状态) = 21字节
-            // 传感器数据: 4个传感器 × 6字节XYZ = 24字节
-            // scale1(2) + scale2(2) + sys_state(1) = 5字节
-            // 总长度: 2 + 21 + 24 + 5 + 1 = 53字节 (不包括帧头和功能码)
-            // 实际帧长度: 3(帧头) + 53 = 56字节 (0x38)
 
-        }
-    }
+		}
 
         // ====================================
         // 1. 数据采集流: 从外设 (USART1 RX) 接收并喂入解析模块
         // ====================================
-        if (osMessageQueueGet(CmdDataQueueHandle, &rx_byte, NULL, 0) == osOK)
+        if (osMessageQueueGet(CmdDataQueueHandle, &motor_feedback, NULL, 0) == osOK)
         {
-            // 专注数据流路径，解析与逻辑交由 cmd_parse 处理
-            cmd_parse_feed_periph_byte(rx_byte);
+            // 处理电机反馈数据
+            // 查找对应的电机索引
+            for (int i = 0; i < MOTOR_NUM; i++) {
+                if (motor[i].id == motor_feedback.addr) {
+                    // 更新电机位置数据到 Motor 结构体
+                	// 存储电机的角度信息
+                    motor[i].current_pos = motor_feedback.motor_data_cur[0]; // °
+                    motor[i].current_vel = motor_feedback.motor_data_cur[1]; // °/s
+                    motor[i].current_acc = motor_feedback.motor_data_cur[2]; // °/s^2
+                	// 转换为步进电机的距离数据
+                	// TODO: 将步进电机的角度信息转换为位移信息
+
+                    // 更新电机状态
+                    motor[i].state = motor_feedback.state;
+                    break;
+                }
+            }
         }
         
         osDelay(1); // 释放 CPU，防止忙等

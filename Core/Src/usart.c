@@ -24,6 +24,12 @@
 //初始化串口标志
 #include <stdio.h>
 #include <stdarg.h>
+
+#include "Motor/Motor.h"
+#include "Sensor/Sensor.h"
+#include "FreeRTOS.h"
+#include "queue.h"
+
 #include <stdbool.h>
 __IO bool rxFrameFlag1 = false;
 __IO uint8_t rxCmd1[256] = {0};
@@ -31,6 +37,17 @@ __IO uint8_t rxCount1 = 0;
 __IO bool rxFrameFlag2 = false;     // USART2 帧接收完成标志
 __IO uint8_t rxCmd2[256] = {0}; // USART2 接收缓冲区
 __IO uint8_t rxCount2 = 0;           // USART2 接收数据长度
+
+// 电机/传感器地址缓冲区
+#define MAX_BUFFER_SIZE 256
+uint8_t motor_buffer[MAX_BUFFER_SIZE] = {0};
+uint8_t motor_buffer_count = 0;
+
+// 电机反馈数据结构体
+MotorFeedback motor_feedback[MOTOR_NUM];
+
+// 函数声明
+void parse_motor_feedback(uint8_t *buffer, uint8_t length);
 /* USER CODE END 0 */
 
 UART_HandleTypeDef huart1;
@@ -227,6 +244,36 @@ void Usart_SendString(UART_HandleTypeDef *huart, uint8_t *str, uint16_t len)
   HAL_UART_Transmit(huart, str, len, HAL_MAX_DELAY);
 }
 
+/**
+  * @brief 解析电机反馈数据
+  * @param buffer: 数据缓冲区
+  * @param length: 数据长度
+  */
+void parse_motor_feedback(uint8_t *buffer, uint8_t length)
+{
+  if (length < 8) return; // 最小数据长度：地址(1) + 功能码(1) + 数据(6)
+  
+  uint8_t addr = buffer[0];
+  uint8_t func = buffer[1];
+  
+  // 查找对应的电机
+  for (int i = 0; i < MOTOR_NUM; i++) {
+    if (motor[i].id == addr) {
+      // 解析位置数据（大端序）
+      motor_feedback[i].addr = addr;
+      motor_feedback[i].func = func;
+      motor_feedback[i].motor_data_cur[0] = (buffer[2] << 8) | buffer[3];
+      motor_feedback[i].motor_data_cur[1] = (buffer[4] << 8) | buffer[5];
+      motor_feedback[i].motor_data_cur[2] = (buffer[6] << 8) | buffer[7];
+      motor_feedback[i].state = (buffer[7] & 0x01); // 状态位（最后一个字节的最低位）
+      
+      // 将数据放入 CmdDataQueue
+      osMessageQueuePut(CmdDataQueueHandle, &motor_feedback[i], 0, 0);
+      break;
+    }
+  }
+}
+
 uint8_t rxData1, rxData2;
 // 启动中断
 void UART1_Receive_Start() {
@@ -241,27 +288,36 @@ void UART2_Receive_Start() {
 /**
   * @brief 串口接收中断
   * @param huart: UART 句柄指针
-  * @param Size
   */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
   if(huart->Instance == USART1)
   {
-    // 接收到被控对象返回的数据后，将接收到的一字节数据rxData1塞进 CmdDataQueue 中，并在DataTask任务中进行处理
+    // 接收到被控对象返回的数据后，将接收到的反馈数据rxData1塞进缓冲区
     uint8_t data = rxData1;
-    osMessageQueuePut(CmdDataQueueHandle, &data, 0, 0);
+    
+    // 将数据添加到缓冲区
+    if (motor_buffer_count < MAX_BUFFER_SIZE) {
+      motor_buffer[motor_buffer_count++] = data;
+    }
+    
+    // 检查是否接收到完整的帧
+    // 帧格式：地址(1) + 功能码(1) + 数据(6) = 8字节
+    if (motor_buffer_count >= 8) {
+      // 解析电机反馈数据
+      parse_motor_feedback(motor_buffer, motor_buffer_count);
+      // 清空缓冲区
+      motor_buffer_count = 0;
+    }
+    osMessageQueuePut(CmdDataQueueHandle, &motor_buffer[0], 0, 0);
     HAL_UART_Receive_IT(&huart1, &rxData1, 1);
-    // 测试是否进入中断
-    // char test1[] = "come into usart1";
-    // Usart_SendString(&huart1, test1, sizeof(test1) - 1);
   }
   else if (huart->Instance == USART2)
   {
+  	// 接收到上位机指令，将控制指令塞入串口2
     uint8_t data = rxData2;
     osMessageQueuePut(CmdCtrlQueueHandle, &data, 0, 0);
     HAL_UART_Receive_IT(&huart2, &rxData2, 1);
-    // char test2[] = "come into usart2";
-    // Usart_SendString(&huart2, test2, sizeof(test2) - 1);
   }
 }
 

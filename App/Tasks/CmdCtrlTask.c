@@ -27,10 +27,6 @@ float scale_val = 100.0f;
 uint8_t sys_state = 0;       // 0:未启动  1:已启动
 bool is_connected = false;   // false:未连接 true:已连接
 
-// ==========================================
-// 纯 C 语言实现的缓存区 (替代原本的 std::vector)
-// ==========================================
-
 
 // 从缓存区头部擦除已处理的数据 (替代 vector.erase)
 void erase_buffer(uint16_t count) {
@@ -54,18 +50,10 @@ void StartCmdCtrlTask(void *argument)
     // 测试串口用
     // uint8_t test_msg[] = "send to usart1\r\n";
     uint8_t receive;
-	uint32_t last_send_time = HAL_GetTick(); // 替代 millis()
-	uint8_t rx_byte;
-    uint32_t test_counter = 0; // 测试计数器
 
 	// 初始化所有数组为 0.0
 	memset(motor_pos, 0, sizeof(motor_pos));
 	memset(sensor_angle, 0, sizeof(sensor_angle));
-    
-    // 设置测试模式为 true 以发送测试数据
-    bool test_mode = true;
-
-
     for (;;)
     {	// ====================================
 	    // 1. 从队列倾听上位机指令 (替代 Serial.available())
@@ -80,12 +68,10 @@ void StartCmdCtrlTask(void *argument)
 	        }
 	    }
 	    // ====================================
-	    // 2. 状态机解析 (逻辑原封不动)
+	    // 2. 状态机解析，生成控制指令并下发给外设
 	    // ====================================
     	cmd_parse_feed_byte(receive);
-	    // ====================================
-	    // 3. 定时向 PC 反馈状态
-	    // ====================================
+
 
 	    // 每次循环延时 2 毫秒，释放 CPU 控制权给学弟的其他任务
 	    osDelay(2);

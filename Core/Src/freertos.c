@@ -25,7 +25,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "BSP/Motor/Motor.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -122,10 +122,10 @@ void MX_FREERTOS_Init(void) {
   CmdQueueHandle = osMessageQueueNew (16, sizeof(uint16_t), &CmdQueue_attributes);
 
   /* creation of SensorMessageQueue */
-  SensorMessageQueueHandle = osMessageQueueNew (16, sizeof(uint16_t), &SensorMessageQueue_attributes);
+  SensorMessageQueueHandle = osMessageQueueNew (32, sizeof(uint32_t), &SensorMessageQueue_attributes);
 
   /* creation of CmdDataQueue */
-  CmdDataQueueHandle = osMessageQueueNew (16, sizeof(uint16_t), &CmdDataQueue_attributes);
+  CmdDataQueueHandle = osMessageQueueNew (16, sizeof(MotorFeedback), &CmdDataQueue_attributes);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */

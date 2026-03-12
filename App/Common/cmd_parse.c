@@ -137,8 +137,8 @@ void cmd_parse_feed_byte(uint8_t byte)
 					case FUNC_MOTOR_CUSTOM:
 						s_ctrlState = CMD_STATE_LEN;
 						break;
-					case FUNC_MOTOR_ENABLE: // TODO: 电机使能函数
-					case FUNC_MOTOR_STOP: // TODO: 电机停止函数
+					case FUNC_MOTOR_ENABLE:
+					case FUNC_MOTOR_STOP:
 						s_ctrlLen = 0;
 						// 进入指令解析执行函数，本部分不提供具体的函数实现
 						cmd_parse_and_execute();
@@ -287,13 +287,27 @@ static void cmd_parse_and_execute(void)
 			switch (func)
 			{
 				case FUNC_MOTOR_SINGLE:
+
 					break;
 				case FUNC_MOTOR_KINEMATIC: // TODO: 基于运动学的电机控制函数
 				case FUNC_MOTOR_SYNC: // TODO: 多电机同步控制
+					for (int i = 0; i < data_len; i++)
+					{
+
+					}
+					motor_sync_control(uint8_t count, uint8_t start_addr, uint16_t *distances);
 				case FUNC_MOTOR_CUSTOM: // TODO: 测试函数
+
 					break;
 				case FUNC_MOTOR_ENABLE: // TODO: 电机使能
+					for (int i = 0; i < MOTOR_NUM; i++)
+					{
+						motor_enable(motor[i].id);
+					}
+					break;
 				case FUNC_MOTOR_STOP: // TODO: 电机停止
+					motor_stop();
+					break;
 				default:
 					break;
 			}
