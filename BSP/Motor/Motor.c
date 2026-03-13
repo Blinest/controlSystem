@@ -34,7 +34,7 @@ void motor_init()
 void motor_enable(uint8_t addr)
 {
 	//TODO: 根据电机地址发送使能指令，可能涉及串口通信或GPIO控制
-	Emm_V5_En_Control(addr, 1, 0);
+	// Emm_V5_En_Control(addr, 1, 0);
 
 	for (int i = 0; i < MOTOR_NUM; i++)
 	{
@@ -74,7 +74,7 @@ void motor_stop()
 	// sprintf(message, "stop all motors！\r\n");
 	// UART2_SendString(message);
 	for(int i = 0; i < MOTOR_NUM; i++) {
-		Emm_V5_Stop_Now(motor[i].id, false);
+		// Emm_V5_Stop_Now(motor[i].id, false);
 		osDelay(5);
 		// 更新电机状态(电机停止状态0xEE)
 		motor[i].state = 0xEE;
@@ -117,6 +117,7 @@ void motor_sync_control(uint8_t count, uint8_t start_addr, uint16_t distance[])
 	Emm_V5_Synchronous_motion(0);
 }
 // 基于运动学的多电机控制函数，通过回调函数实现
+/*
 void motor_kinematic_control (Kinematic kinematic, int* R, int* theta, float* phi, float* deltaL[])
 {
 	//TODO: 实现基于运动学的多电机控制算法，计算每个电机的目标位置和速度，并发送相应的控制指令
@@ -124,6 +125,7 @@ void motor_kinematic_control (Kinematic kinematic, int* R, int* theta, float* ph
 	motor_sync_control(MOTOR_NUM, 0, deltaL);
 	// 进行单电机控制
 }
+*/
 // 自定义多电机控制函数
 void motor_custom_control(uint8_t count, uint8_t *params)
 {

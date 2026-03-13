@@ -295,7 +295,6 @@ static void cmd_parse_and_execute(void)
 					{
 
 					}
-					motor_sync_control(uint8_t count, uint8_t start_addr, uint16_t *distances);
 				case FUNC_MOTOR_CUSTOM: // TODO: 测试函数
 
 					break;

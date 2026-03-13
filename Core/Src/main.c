@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
+#include "can.h"
 #include "usart.h"
 #include "gpio.h"
 
@@ -91,6 +92,7 @@ int main(void)
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
+  MX_CAN_Init();
   /* USER CODE BEGIN 2 */
   /* 在调度器启动前挂上 USART2 接收中断，否则 HAL 不会在 RXNE 中断里调用 HAL_UART_RxCpltCallback */
   UART2_Receive_Start();
