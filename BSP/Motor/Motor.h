@@ -8,6 +8,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "motor_limits.h"
 /**********************************************************
 ***	编写作者：Lin
 
@@ -17,11 +18,54 @@
 #define MOTOR_NUM 3 // 定义电机数量
 #define MOTOR_ID 4 // 定义电机起始 ID
 
+// ==================== Emm_V5 步进闭环：反馈指令帧结构体 ====================
+// 帧格式以 `0x6B` 结尾（文档称“校验字节”，发送端固定为 0x6B）
+// 常见 ACK：addr + func + status + 0x6B
+// status：0x02=正确，0xEE=错误（按你提供的表）
+
+typedef enum {
+	EMM_STATUS_OK  = 0x02,
+	EMM_STATUS_ERR = 0xEE,
+} Emm_Status_t;
+
+typedef struct {
+	uint8_t addr;   // 地址
+	uint8_t func;   // 功能码
+	uint8_t status; // 02:正确, EE:错误
+	uint8_t check;  // 固定 0x6B
+} Emm_AckFrame_t;
+
+// 读取电机目标位置（功能码 0x33）
+// 正常返回：addr + 0x33 + sign + pos(4字节, 大端) + 0x6B
+// 错误返回：addr + 0x33 + 0xEE + 0x6B
+typedef struct {
+	uint8_t addr;      // 地址
+	uint8_t func;      // 0x33
+	uint8_t sign;      // 符号字节（表格里写“符号(01)”）
+	uint8_t pos_be[4]; // 目标位置，4字节大端
+	uint8_t check;     // 固定 0x6B
+} Emm_posFrame_t;
+
+typedef union {
+	Emm_AckFrame_t  ack;
+	Emm_posFrame_t tpos;
+	uint8_t raw[16]; // 兜底：保留原始字节
+} Emm_FeedbackFrame_t;
+
+// 4字节大端转 int32（避免依赖编译器对 inline/C99 的支持）
+#define EMMV5_POS_BE_TO_I32(pos_be) \
+((int32_t)( \
+((uint32_t)((pos_be)[0]) << 24) | \
+((uint32_t)((pos_be)[1]) << 16) | \
+((uint32_t)((pos_be)[2]) << 8)  | \
+((uint32_t)((pos_be)[3]) << 0)  \
+))
+
 // ==================== 电机外设反馈数据结构体 ====================
 typedef struct MotorFeedback {
     uint8_t addr;          // 电机地址
     uint8_t func;          // 功能码
-	uint8_t totol_byte;
+	uint8_t total_byte;
 	uint8_t configure;
 	uint8_t vol; //电压
 	uint16_t current; //电流
@@ -33,15 +77,16 @@ typedef struct MotorFeedback {
 
 // ==================== 步进电机参数 ====================
 
-typedef struct StepperMotor
+typedef struct
 {
 	uint8_t daocheng;
 	uint8_t xifen;
 	double step_angle;
-	uint8_t current_pos; // mm
-	uint8_t target_pos; // mm
-	uint8_t current_vel; // mm/s
-	uint8_t target_vel; // mm/s
+	float current_pos; // mm
+	float target_pos; // mm
+	float current_vel; // mm/s
+	float target_vel; // mm/s
+	float current_acc; //mm/s^2
 } StepperMotor;
 
 typedef struct ServoMotor
@@ -49,14 +94,14 @@ typedef struct ServoMotor
 	uint8_t daocheng;
 	uint8_t xifen;
 	double step_angle;
-	uint8_t current_pos; // mm
-	uint8_t target_pos; // mm
-	uint8_t current_vel; // mm/s
-	uint8_t target_vel; // mm/s
+	float current_pos; // mm
+	float target_pos; // mm
+	float current_vel; // mm/s
+	float target_vel; // mm/s
 } ServoMotor;
 
-// ==================== 电机参数 ====================
-typedef struct Motor
+// ==================== 全局电机结构体 ====================
+typedef struct GlobalMotor
 {
 	int id;
 	bool state;
@@ -64,30 +109,46 @@ typedef struct Motor
 	ServoMotor servo_motor;
 	uint8_t last_response_time;
 	uint8_t timeout_threshold;
-	uint16_t current_pos; // rad
-	uint16_t current_vel; // rpm -> rad/s
-	uint16_t current_acc; // rad/s^2
-	uint16_t target_pos;
-	uint16_t target_vel;
-	uint16_t target_acc;
+	float current_pos; // rad
+	float current_vel; // rpm -> rad/s
+	float current_acc; // rad/s^2
+	float target_pos;
+	float target_vel;
+	float target_acc;
 	float vel_max;
 	uint8_t size;
 	uint8_t cmd[32];
-} Motor;
+} GlobalMotor;
 
 void motor_init();
-void motor_run(int addr, uint16_t speed, float target, bool snf);
+void motor_run(int addr, float speed, float target, bool snf);
 void motor_enable(uint8_t addr);
-void motor_stop();
-void motor_single_control(uint8_t addr, uint8_t direction, uint16_t distance);
-void motor_sync_control(uint8_t count, uint8_t start_addr, uint16_t distance[]);
+void motor_stop_all();
+void motor_single_control(uint8_t addr, uint8_t direction, float distance);
+void motor_sync_control(uint8_t count, uint8_t start_addr, float distance[]);
 
-typedef void (*Kinematic)(float CR[], float deltaL[]);
-void motor_kinematic_control(Kinematic kinematic, uint8_t* R, float* theta, float* phi, float deltaL[]);
+typedef void (*Kinematic)(uint8_t R, float theta, float phi, float deltaL[]);
+void motor_kinematic_control(Kinematic kinematic, uint8_t R, float theta, float phi, float deltaL[]);
 void motor_custom_control(uint8_t count, uint8_t *params);
 
+// 新增函数 - 添加于2026-03-27 by Psyduck
+void motor_error_handler(uint8_t addr, uint8_t error_code);
+void motor_auto_calibrate(uint8_t addr);
+void motor_status_check(void);
 
 float motor_angle_to_displacement(uint8_t motor_index, float angle);
 float motor_displacement_to_angle(uint8_t motor_index, float displacement);
-extern Motor motor[MOTOR_NUM];
+
+
+
+// 历史记录和突变检测函数
+void motor_history_init(uint8_t motor_id);
+uint8_t motor_check_change_with_history(uint8_t motor_id, float velocity, 
+                                        float acceleration, float position, 
+                                        uint32_t current_time);
+void motor_reset_error_count(uint8_t motor_id);
+uint8_t motor_get_error_count(uint8_t motor_id);
+
+extern GlobalMotor global_motor[MOTOR_NUM];
+extern MotorFeedback motor_feedback[MOTOR_NUM];
 #endif //CONTROLSYSTEM_MOTOR_H

@@ -116,16 +116,16 @@ void MX_FREERTOS_Init(void) {
 
   /* Create the queue(s) */
   /* creation of CmdCtrlQueue */
-  CmdCtrlQueueHandle = osMessageQueueNew (16, sizeof(uint16_t), &CmdCtrlQueue_attributes);
+  CmdCtrlQueueHandle = osMessageQueueNew (64, sizeof(uint8_t), &CmdCtrlQueue_attributes);
 
   /* creation of CmdQueue */
   CmdQueueHandle = osMessageQueueNew (16, sizeof(uint16_t), &CmdQueue_attributes);
 
   /* creation of SensorMessageQueue */
-  SensorMessageQueueHandle = osMessageQueueNew (32, sizeof(uint32_t), &SensorMessageQueue_attributes);
+  SensorMessageQueueHandle = osMessageQueueNew (128, sizeof(uint8_t), &SensorMessageQueue_attributes);
 
   /* creation of CmdDataQueue */
-  CmdDataQueueHandle = osMessageQueueNew (16, sizeof(uint16_t), &CmdDataQueue_attributes);
+  CmdDataQueueHandle = osMessageQueueNew (64, sizeof(uint8_t), &CmdDataQueue_attributes);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */

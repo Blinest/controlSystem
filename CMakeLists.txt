@@ -33,8 +33,12 @@ enable_language(C ASM)
 
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME}
-    BSP/Sensor/IMU.h
-    BSP/Sensor/IMU.c
+    BSP/Sensor/Sensor.c
+    App/CR/kinematic.c
+    BSP/Motor/motor_limits.c
+    App/Common/can_driver.c
+    App/Common/can_driver.h
+    BSP/Motor/Emm_V5.c
 )
 
 # Add STM32CubeMX generated sources
@@ -43,6 +47,7 @@ add_subdirectory(cmake/stm32cubemx)
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined library search paths
+
 )
 
 # Add sources to executable
@@ -50,10 +55,14 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     App/Tasks/DataTask.c
     App/Tasks/CmdCtrlTask.c
-    App/Common/cmd_parse.c
-    APP/CR/CR.c
+    App/Common/cmd_parse_unified.c
+    App/Common/pc_cmd_parser.c
+    App/Common/periph_cmd_parser.c
+    App/Common/cmd_packer.c
+    App/CR/CR.c
     BSP/Motor/Motor.c
-
+    BSP/Sensor/IMU.c
+    BSP/Motor/Emm42_command.c
 )
 
 # Add include paths
@@ -63,6 +72,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     Drivers
     BSP
 )
+
 
 # Add project symbols (macros)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
@@ -77,4 +87,19 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     stm32cubemx
 
     # Add user defined libraries
+)
+
+
+
+#测试代码
+add_executable(test
+    tests/test_todo_functions.c
+
+)
+
+target_include_directories(test PRIVATE
+
+)
+target_link_libraries(test
+    stm32cubemx
 )

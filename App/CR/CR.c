@@ -10,18 +10,17 @@
 
 #include "CR.h"
 #include "usart.h"
-#include "CR.h"
 #include "kinematic.h"
-#include "motor/motor.h"
+#include "Motor/Motor.h"
 #include <stdio.h>
 #include "math.h"
 
-continuum_robot CR;
-#define CR_THETA1_MAX 60
-#define CR_THETA1_MIN -40
-#define CR_THETA2_MAX 60
-#define CR_THETA2_MIN -40
-#define CR_ANGLE_RANGE 30
+
+#define LQTS_THETA1_MAX 60
+#define LQTS_THETA1_MIN -40
+#define LQTS_THETA2_MAX 60
+#define LQTS_THETA2_MIN -40
+#define LQTS_ANGLE_RANGE 30
 #define pi 3.1415926535
 #define MOTOR_NUM 3
 
@@ -36,9 +35,11 @@ bool tendon_comp = true;
 ***	qq：1071378062
 **********************************************************/
 
-void CR_init(void)
+LQTS lqts;
+
+void LQTS_init(void)
 {
-    CR.arm_params[0] = (ArmParams){
+    lqts.arm_params[0] = (ArmParams){
         .L = 200, // 臂体长度
         .tendon_preload = 16.0, // 预紧力，不考虑
         .friction_coeff = 0.1, // 摩擦系数，无张力反馈，不考虑
@@ -48,7 +49,7 @@ void CR_init(void)
         .direction_gain = {0.95, 1.75, 0.8, 1.75} // 方向补偿(urdl)
     };
 
-    CR.arm_params[1] = (ArmParams){
+    lqts.arm_params[1] = (ArmParams){
         .L = 200,
         .tendon_preload = 8.0,// 预紧力，不考虑
         .friction_coeff = 0.1,// 摩擦系数，无张力反馈，不考虑
@@ -57,7 +58,7 @@ void CR_init(void)
         .calibrate_offset = {0, 0, 0}, // 零点偏移
         .direction_gain = {1.25, 0.95, 1.35, 1.15} // 方向补偿
     };
-    CR.parameter.r = 5; // 肌腱与中心孔距离 5mm
+    lqts.parameter.r = 5; // 肌腱与中心孔距离 5mm
     motor_init();
 }
 
@@ -73,18 +74,18 @@ void deltaL_update(void)
     // float cur_pos[MOTOR_NUM + 1];
     for(int i = 1; i <= 6; i++)
     {
-        // cur_pos[i] = CR.joint_space.deltaL[i];
+        // cur_pos[i] = LQTS.joint_space.deltaL[i];
     }
 
     char response[128];
-    sprintf(response, "Parameters: %.2f, %.2f, %.2f, %.2f, %.2f, %.2f\r\n",CR.joint_space.deltaL[1], CR.joint_space.deltaL[2],CR.joint_space.deltaL[3],CR.joint_space.deltaL[4],CR.joint_space.deltaL[5],CR.joint_space.deltaL[6]);
+    sprintf(response, "Parameters: %.2f, %.2f, %.2f, %.2f, %.2f, %.2f\r\n",lqts.joint_space.deltaL[1], lqts.joint_space.deltaL[2],lqts.joint_space.deltaL[3],lqts.joint_space.deltaL[4],lqts.joint_space.deltaL[5],lqts.joint_space.deltaL[6]);
 
 }
 
 void autostraight(void)
 {
-    CR.joint_space.theta = 0;
-    CR.joint_space.phi = 0;
+    lqts.joint_space.theta = 0;
+    lqts.joint_space.phi = 0;
 
     deltaL_update();
 }
@@ -104,15 +105,15 @@ double tendonCompensation(int seg, char direction, double angle_deg)
 {
     int dir_idx = direction_to_index(direction);
     double angle_rad = angle_deg * pi / 180.0;
-    double dir_gain =  CR.arm_params[seg-1].direction_gain[dir_idx];
+    double dir_gain =  lqts.arm_params[seg-1].direction_gain[dir_idx];
     double theta_ideal = angle_rad;
     // 摩擦引起的角度损失，理论上与肌腱张力成正比，由于目前没有张力反馈，不进行张力补偿，
-    // double r = CR.parameter.r / 1000;
+    // double r = lqts.parameter.r / 1000;
     // double friction_loss_rad = friction_torque / (bending_stiffness_Nm2 + 0.001)  * (1.0 - exp(-angle_rad)); // 使用指数函数平滑
 
     //材料弹性引起的角度损失，考虑弹性恢复力矩，目前不需要考虑
-    //double elastic_coeff = (CR.arm_params[seg-1].backbone_stiffness / (CR.arm_params[seg-1].L* CR.arm_params[seg-1].L));
-    //double elastic_loss = elastic_coeff * angle_rad * CR.arm_params[seg-1].material_damping;
+    //double elastic_coeff = (lqts.arm_params[seg-1].backbone_stiffness / (lqts.arm_params[seg-1].L* lqts.arm_params[seg-1].L));
+    //double elastic_loss = elastic_coeff * angle_rad * lqts.arm_params[seg-1].material_damping;
 
     // 大角度时的几何非线性补偿
     // 当弯曲时，肌腱的有效力臂会减小：R_eff = R * cos(theta/2)
@@ -193,8 +194,8 @@ uint8_t armBend_edit(int seg, char direction, double val, double g_u, double g_r
     }
 
     // 更新补偿后的关节角度
-    CR.joint_space.theta = compensated_angle_rad;
-    CR.joint_space.phi = phi;
+    lqts.joint_space.theta = compensated_angle_rad;
+    lqts.joint_space.phi = phi;
     deltaL_update();
     return 0;
 }

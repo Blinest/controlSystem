@@ -1,5 +1,5 @@
 #include "Motor/Emm_V5.h"
-
+#include "usart.h"
 /**********************************************************
 ***	Emm_V5.0步进闭环控制例程
 ***	编写作者：ZHANGDATOU
@@ -8,7 +8,10 @@
 ***	CSDN博客：http s://blog.csdn.net/zhangdatou666
 ***	qq交流群：262438510
 **********************************************************/
-
+void usart_SendCmd(uint8_t *cmd, uint8_t len)
+{
+	Usart_SendString(&huart1, cmd, len);
+}
 /**
   * @brief    将当前位置清零
   * @param    addr  ：电机地址

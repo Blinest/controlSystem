@@ -2,7 +2,7 @@
 #define __EMM_V5_H
 
 #include "usart.h"
-
+#include "stdbool.h"
 /**********************************************************
 ***	Emm_V5.0步进闭环控制例程
 ***	编写作者：ZHANGDATOU

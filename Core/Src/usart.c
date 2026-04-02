@@ -43,8 +43,6 @@ __IO uint8_t rxCount2 = 0;           // USART2 接收数据长度
 uint8_t motor_buffer[MAX_BUFFER_SIZE] = {0};
 uint8_t motor_buffer_count = 0;
 
-// 电机反馈数据结构体
-MotorFeedback motor_feedback[MOTOR_NUM];
 
 // 函数声明
 void parse_motor_feedback(uint8_t *buffer, uint8_t length);
@@ -258,7 +256,7 @@ void parse_motor_feedback(uint8_t *buffer, uint8_t length)
   
   // 查找对应的电机
   for (int i = 0; i < MOTOR_NUM; i++) {
-    if (motor[i].id == addr) {
+    if (global_motor[i].id == addr) {
       // 解析位置数据（大端序）
       motor_feedback[i].addr = addr;
       motor_feedback[i].func = func;
@@ -293,30 +291,14 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
   if(huart->Instance == USART1)
   {
-    // 接收到被控对象返回的数据后，将接收到的反馈数据rxData1塞进缓冲区
-    uint8_t data = rxData1;
-    
-    // 将数据添加到缓冲区
-    if (motor_buffer_count < MAX_BUFFER_SIZE) {
-      motor_buffer[motor_buffer_count++] = data;
-    }
-    
-    // 检查是否接收到完整的帧
-    // 帧格式：地址(1) + 功能码(1) + 数据(6) = 8字节
-    if (motor_buffer_count >= 8) {
-      // 解析电机反馈数据
-      parse_motor_feedback(motor_buffer, motor_buffer_count);
-      // 清空缓冲区
-      motor_buffer_count = 0;
-    }
-    osMessageQueuePut(CmdDataQueueHandle, &motor_buffer[0], 0, 0);
+    // 接收到外设反馈数据，送入 CmdDataQueueHandle
+    osMessageQueuePut(CmdDataQueueHandle, &rxData1, 0, 0);
     HAL_UART_Receive_IT(&huart1, &rxData1, 1);
   }
   else if (huart->Instance == USART2)
   {
-  	// 接收到上位机指令，将控制指令塞入串口2
-    uint8_t data = rxData2;
-    osMessageQueuePut(CmdCtrlQueueHandle, &data, 0, 0);
+  	// 接收到上位机指令，送入 CmdCtrlQueueHandle
+    osMessageQueuePut(CmdCtrlQueueHandle, &rxData2, 0, 0);
     HAL_UART_Receive_IT(&huart2, &rxData2, 1);
   }
 }
