@@ -45,9 +45,9 @@ void sensor_init(void)
     
     // 3. 初始化传感器数据结构
     for (int i = 0; i < SENSOR_NUM; i++) {
-        global_sensor[i].x = 0;
-        global_sensor[i].y = 0;
-    	global_sensor[i].z = 0;
+        global_sensor[i].x = 1;
+        global_sensor[i].y = 2;
+    	global_sensor[i].z = 3;
     }
     
     printf("[SENSOR] 传感器初始化完成\n");
@@ -122,7 +122,7 @@ void sensor_multi_read(void)
  * 
  * 执行传感器自检，检查传感器状态
  */
-void sensor_self_test(void)
+void sensor_self_test(uint8_t sensor_id)
 {
     printf("[SENSOR] 开始传感器自检\n");
     
@@ -143,7 +143,7 @@ void sensor_self_test(void)
     printf("  2. 检查数据范围... ");
     
     // 读取一些样本数据检查是否在合理范围内
-    sensor_single_read(1);
+    sensor_single_read(sensor_id);
     
     // 检查数据是否在合理范围内
     if (global_sensor[0].x > 0 && global_sensor[0].x < 0xFFFF &&

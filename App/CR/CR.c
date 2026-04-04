@@ -14,6 +14,7 @@
 #include "Motor/Motor.h"
 #include <stdio.h>
 #include "math.h"
+#include "Sensor/Sensor.h"
 
 
 #define LQTS_THETA1_MAX 60
@@ -58,8 +59,11 @@ void LQTS_init(void)
         .calibrate_offset = {0, 0, 0}, // 零点偏移
         .direction_gain = {1.25, 0.95, 1.35, 1.15} // 方向补偿
     };
+	lqts.operation_space.scale = 20;
+	lqts.joint_space.theta = 30;
     lqts.parameter.r = 5; // 肌腱与中心孔距离 5mm
     motor_init();
+	sensor_init();
 }
 
 // 用于控制喷管弯曲

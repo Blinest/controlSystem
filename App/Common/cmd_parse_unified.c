@@ -32,8 +32,8 @@ void cmd_parse_reset(void) {
  *   打包函数接口实现
  * ================================================================ */
 
-uint16_t cmd_pack_status_frame(uint8_t* frame, GlobalMotor motor[MOTOR_NUM], GlobalSensor sensor[SENSOR_NUM], float scale, uint8_t state) {
-    return cmd_packer_pack_status_frame(frame, motor, sensor, scale, state);
+uint16_t cmd_pack_status_frame(uint8_t* frame, GlobalMotor motor[MOTOR_NUM], GlobalSensor sensor[SENSOR_NUM], LQTS lqts, uint8_t state) {
+    return cmd_packer_pack_status_frame(frame, motor, sensor, &lqts, state);
 }
 
 /* ================================================================

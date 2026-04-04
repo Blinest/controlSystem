@@ -10,10 +10,11 @@
 #include "cmsis_os.h"
 #include "cmsis_os2.h"
 #include "main.h"
+#include "string.h"
 #include "usart.h"
 #include "Common/cmd_parse_unified.h"
-#include "string.h"
 #include "Motor/Motor.h"
+#include "stdio.h"
 #include "Sensor/Sensor.h"
 #define RX_BUF_SIZE 256
 
@@ -26,7 +27,7 @@ void StartCmdCtrlTask(void *argument)
 	float motor_pos[MOTOR_NUM][3] = {0};
 	float sensor_angle[SENSOR_NUM][3] = {0};
     // 测试串口用
-    //uint8_t test_msg[] = "send to usart1\r\n";
+    uint8_t test_msg[] = "send to usart1\r\n";
     uint8_t receive;
 
 	// 初始化所有数组为 0.0
@@ -35,7 +36,11 @@ void StartCmdCtrlTask(void *argument)
     for (;;)
     {
 	    // 从队列接收上位机指令
-	    while (osMessageQueueGet(CmdCtrlQueueHandle, &receive, NULL, 0) == osOK) {
+	    // 使用阻塞方式获取队列数据，避免忙等待，让出 CPU 给低优先级任务 (如 DataTask)
+	    if (osMessageQueueGet(CmdCtrlQueueHandle, &receive, NULL, osWaitForever) == osOK) {
+	        // 优先回显，提高响应性
+	        Usart_SendString(&huart2, &receive, 1);
+	        
 	        if (rx_len < RX_BUF_SIZE) {
 	            rx_buffer[rx_len++] = receive;
 	        	// 进入指令解析函数，指令解析函数负责指令解析，而后再将解析好的指令传给电机进行解析
@@ -44,8 +49,5 @@ void StartCmdCtrlTask(void *argument)
                 rx_len = 0; // 缓冲区溢出重置
             }
 	    }
-	    osDelay(10); // 降低 CPU 占用，但保持响应性
 	  }
-
-
 }

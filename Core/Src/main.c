@@ -22,12 +22,10 @@
 #include "can.h"
 #include "usart.h"
 #include "gpio.h"
-#include "../BSP/Motor/Emm42_command.h"
-#include "stdio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "CR/CR.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -100,7 +98,8 @@ int main(void)
   UART2_Receive_Start();
   // 启动串口1的中断接收
   UART1_Receive_Start();
-  printf("=== System Initialized ===\n");
+  
+  LQTS_init();
   /* USER CODE END 2 */
 
   /* Init scheduler */

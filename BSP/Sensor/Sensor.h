@@ -44,7 +44,7 @@ void sensor_multi_read(void);
 /**
  * @brief 传感器自检函数
  */
-void sensor_self_test(void);
+void sensor_self_test(uint8_t sensor_id);
 
 /**
  * @brief 获取传感器原始数据

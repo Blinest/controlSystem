@@ -12,7 +12,10 @@
  * @date 2026-03-30
  * @author Psyduck
  */
+#include <stdio.h>
 #include "cmsis_os.h"
+#include "FreeRTOS.h"
+#include "task.h"
 #include "usart.h"
 #include "Motor/Motor.h"
 #include "Sensor/Sensor.h"
@@ -35,21 +38,32 @@ void StartDataTask(void *argument)
     
     for(;;)
     {
+
         // ====================================
         // 0. 数据回传流: 发送数据到 PC (USART2 TX)
         // ====================================
-        while (osMessageQueueGet(SensorMessageQueueHandle, &tx_byte, NULL, 0) == osOK)
-        {
-            Usart_SendString(&huart2, &tx_byte, 1);
-        }
 
+        // 批量发送数据
+        static uint8_t tx_buffer[256];
+        static uint16_t tx_buffer_len = 0;
+        
+        // 提取并发送
+        tx_buffer_len = 0;
+        while (osMessageQueueGet(SensorMessageQueueHandle, &tx_byte, NULL, 0) == osOK && tx_buffer_len < 256)
+        {
+            tx_buffer[tx_buffer_len++] = tx_byte;
+        }
+        
+        if (tx_buffer_len > 0) {
+            Usart_SendString(&huart2, tx_buffer, tx_buffer_len);
+        }
+        
         // ====================================
         // 1. 数据采集流: 从外设 (USART1 RX) 接收并处理
         // ====================================
         if (osMessageQueueGet(CmdDataQueueHandle, &rx_byte, NULL, 0) == osOK)
         {
             // 调用新的 Emm42 协议解析函数
-            // 这个函数会解析字节流，更新 motor 全局结构体，并触发数据上报
         	emm42_parse_feed_byte(rx_byte);
         	sensor_data_parser_feed_byte(rx_byte);
         }
@@ -61,25 +75,25 @@ void StartDataTask(void *argument)
         static uint32_t last_send_time = 0;
         uint32_t current_time = osKernelGetTickCount();
         
-        // 每100ms发送一次数据（可调整）
+        // 每100ms发送一次数据
         if ((current_time - last_send_time) >= 100)
         {
-            // 打包系统状态数据
-            uint8_t packed_frame[64];
+            // 打包系统状态数据 (使用 static 以节省堆栈空间)
+            static uint8_t packed_frame[128];
         	const float scale = lqts.operation_space.scale;
         	const uint8_t state = lqts.state;
-            const uint16_t frame_len = cmd_pack_status_frame(packed_frame, global_motor, global_sensor, scale, state);
+            
+            const uint16_t frame_len = cmd_packer_pack_status_frame(packed_frame, global_motor, global_sensor, &lqts, state);
             
             // 发送到队列
             for (int i = 0; i < frame_len; i++)
             {
                 osMessageQueuePut(SensorMessageQueueHandle, &packed_frame[i], 0, 0);
             }
-            
             last_send_time = current_time;
         }
         
-        osDelay(1); // 释放 CPU，防止忙等
+        osDelay(10); // 增加延时，降低 CPU 占用并给串口发送留出时间
     }
 }
 

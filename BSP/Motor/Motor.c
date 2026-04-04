@@ -35,7 +35,8 @@ void motor_init()
 		global_motor[i].vel_max = 50; // 最大速度建议50rpm以下，速度过高，步进电机(FUYU35, 2025年)会出现抖动
 		global_motor[i].current_acc = 0; // 由于位移量较小，为提高响应速度，直接启动，不做加减速处理 (0-255)
 		global_motor[i].stepper_motor.current_acc = 0;
-		
+		global_motor[i].stepper_motor.current_pos = 30;
+		global_motor[i].state = 0x01;
 		// 初始化历史记录 (防止信号干扰检测)
 		motor_history_init(i);
 	}
@@ -106,8 +107,7 @@ void motor_error_handler(uint8_t addr, uint8_t error_code)
                     
                 case 0x06: // 信号干扰检测
                     printf("[MOTOR] 电机%d检测到信号干扰\n", addr);
-                    // 短暂延迟后重试
-                    osDelay(MOTOR_RECOVERY_DELAY_MS);
+
                     break;
                     
                 default:
@@ -239,7 +239,7 @@ void motor_stop_all()
 	// UART2_SendString(message);
 	for(int i = 0; i < MOTOR_NUM; i++) {
 		// Emm_V5_Stop_Now(motor[i].id, false);
-		osDelay(5);
+
 		// 更新电机状态(电机停止状态0xEE)
 		global_motor[i].state = 0xEE;
 	}
@@ -385,7 +385,7 @@ void motor_sync_control(uint8_t count, uint8_t start_addr, float distance[])
 	printf("[MOTOR] 同步控制 %d个电机: 最大位移=%.2fmm\n", size, max_distance);
 	
 	Emm_V5_Synchronous_motion(0);
-	osDelay(20);
+
 	
 	for (int i = 0; i < size; i++)
 	{
@@ -688,4 +688,146 @@ uint8_t motor_signal_interference_check(uint8_t motor_id, float velocity, float 
     }
     
     return 0x00; // 正常
+}
+
+/**
+ * @brief 喷管弯曲控制函数
+ * @param direction 弯曲方向 (0:负方向, 1:正方向)
+ * @param angle 弯曲角度 (单位: 度，已乘以100)
+ * 
+ * 根据弯曲角度和方向，控制多个电机实现喷管弯曲
+ */
+void motor_bend_control(uint8_t direction, float angle)
+{
+    printf("[MOTOR] 喷管弯曲控制: 方向=%s, 角度=%.2f度\n", 
+           direction ? "正" : "负", angle / 100.0f);
+    
+    // 1. 将角度转换为电机位移
+    // 这里需要根据实际机械结构计算每个电机需要的位移
+    // 假设有4个电机控制喷管弯曲，使用简单的线性模型
+    
+    float motor_displacements[MOTOR_NUM] = {0};
+    
+    // 简化模型：角度转换为位移
+    // 实际应该根据运动学模型计算
+    float base_displacement = angle / 100.0f * 10.0f; // 每度对应10mm位移
+    
+    // 根据方向分配位移
+    if (direction == 1) {
+        // 正方向：电机1和3正位移，电机2和4负位移
+        motor_displacements[0] = base_displacement;
+        motor_displacements[1] = -base_displacement;
+        motor_displacements[2] = base_displacement;
+        motor_displacements[3] = -base_displacement;
+    } else {
+        // 负方向：电机1和3负位移，电机2和4正位移
+        motor_displacements[0] = -base_displacement;
+        motor_displacements[1] = base_displacement;
+        motor_displacements[2] = -base_displacement;
+        motor_displacements[3] = base_displacement;
+    }
+    
+    // 2. 限制位移范围
+    for (int i = 0; i < MOTOR_NUM; i++) {
+        if (motor_displacements[i] > 100.0f) motor_displacements[i] = 100.0f;
+        if (motor_displacements[i] < -100.0f) motor_displacements[i] = -100.0f;
+    }
+    
+    // 3. 调用多电机同步控制
+    motor_sync_control(MOTOR_NUM, MOTOR_ID, motor_displacements);
+    
+    printf("[MOTOR] 喷管弯曲控制完成，各电机位移: ");
+    for (int i = 0; i < MOTOR_NUM; i++) {
+        printf("M%d:%.2fmm ", i+1, motor_displacements[i]);
+    }
+    printf("\n");
+}
+
+/**
+ * @brief 截面收缩控制函数
+ * @param scale 收缩比例 (单位: 百分比，已乘以100)
+ * 
+ * 根据收缩比例，控制多个电机实现截面收缩
+ */
+void motor_scale_control(float scale)
+{
+    printf("[MOTOR] 截面收缩控制: 比例=%.2f%%\n", scale / 100.0f);
+    
+    // 1. 将比例转换为电机位移
+    // 这里需要根据实际机械结构计算每个电机需要的位移
+    // 假设所有电机同步向内移动实现截面收缩
+    
+    float motor_displacements[MOTOR_NUM] = {0};
+    
+    // 简化模型：比例转换为位移
+    // 50%比例对应0位移，0%和100%对应最大位移
+    float base_displacement = (scale / 100.0f - 0.5f) * 20.0f; // 比例转换为位移
+    
+    // 所有电机同步移动
+    for (int i = 0; i < MOTOR_NUM; i++) {
+        motor_displacements[i] = base_displacement;
+    }
+    
+    // 2. 限制位移范围
+    for (int i = 0; i < MOTOR_NUM; i++) {
+        if (motor_displacements[i] > 50.0f) motor_displacements[i] = 50.0f;
+        if (motor_displacements[i] < -50.0f) motor_displacements[i] = -50.0f;
+    }
+    
+    // 3. 调用多电机同步控制
+    motor_sync_control(MOTOR_NUM, MOTOR_ID, motor_displacements);
+    
+    printf("[MOTOR] 截面收缩控制完成，各电机位移: ");
+    for (int i = 0; i < MOTOR_NUM; i++) {
+        printf("M%d:%.2fmm ", i+1, motor_displacements[i]);
+    }
+    printf("\n");
+}
+
+/**
+ * @brief 完整电机控制函数
+ * @param addr 电机地址
+ * @param dir_x X轴方向 (0:负, 1:正)
+ * @param dist_x X轴距离 (已乘以100)
+ * @param dir_y Y轴方向
+ * @param dist_y Y轴距离
+ * @param dir_z Z轴方向
+ * @param dist_z Z轴距离
+ * @param velocity 速度 (已乘以100)
+ * @param acceleration 加速度 (已乘以100)
+ * 
+ * 控制单个电机的完整参数
+ */
+void motor_full_control(uint8_t addr, uint8_t dir_x, float dist_x, uint8_t dir_y, float dist_y,
+                       uint8_t dir_z, float dist_z, float velocity, float acceleration)
+{
+    printf("[MOTOR] 完整电机控制: 电机%d\n", addr);
+    printf("  X: %s%.2fmm, Y: %s%.2fmm, Z: %s%.2fmm\n",
+           dir_x ? "+" : "-", dist_x / 100.0f,
+           dir_y ? "+" : "-", dist_y / 100.0f,
+           dir_z ? "+" : "-", dist_z / 100.0f);
+    printf("  速度: %.2frpm, 加速度: %.2fmm/s²\n", 
+           velocity / 100.0f, acceleration / 100.0f);
+    
+    int idx = (addr >= MOTOR_ID && addr < MOTOR_ID + MOTOR_NUM) ? (addr - MOTOR_ID) : 0;
+    
+    // 更新全局结构体中的目标值
+    float displacement_x = (dir_x == 0) ? -dist_x / 100.0f : dist_x / 100.0f;
+    float displacement_y = (dir_y == 0) ? -dist_y / 100.0f : dist_y / 100.0f;
+    float displacement_z = (dir_z == 0) ? -dist_z / 100.0f : dist_z / 100.0f;
+    
+    // 这里假设控制的是三维坐标，实际可能需要根据机械结构转换
+    // 简化：使用X轴位移作为主要控制
+    float total_displacement = displacement_x;
+    
+    // 更新目标位置和速度
+    global_motor[idx].stepper_motor.target_pos = global_motor[idx].stepper_motor.current_pos + total_displacement;
+    global_motor[idx].stepper_motor.target_vel = (uint16_t)(velocity / 100.0f);
+    global_motor[idx].current_acc = acceleration / 100.0f;
+    
+    // 调用电机运行函数
+    motor_run(addr, velocity / 100.0f, 
+              global_motor[idx].stepper_motor.current_pos + total_displacement, false);
+    
+    printf("[MOTOR] 完整电机控制完成\n");
 }

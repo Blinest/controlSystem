@@ -130,6 +130,10 @@ void motor_sync_control(uint8_t count, uint8_t start_addr, float distance[]);
 typedef void (*Kinematic)(uint8_t R, float theta, float phi, float deltaL[]);
 void motor_kinematic_control(Kinematic kinematic, uint8_t R, float theta, float phi, float deltaL[]);
 void motor_custom_control(uint8_t count, uint8_t *params);
+void motor_bend_control(uint8_t direction, float angle);
+void motor_scale_control(float scale);
+void motor_full_control(uint8_t addr, uint8_t dir_x, float dist_x, uint8_t dir_y, float dist_y, 
+                       uint8_t dir_z, float dist_z, float velocity, float acceleration);
 
 // 新增函数 - 添加于2026-03-27 by Psyduck
 void motor_error_handler(uint8_t addr, uint8_t error_code);

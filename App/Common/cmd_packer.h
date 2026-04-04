@@ -15,7 +15,7 @@
 #include <stdbool.h>
 #include "Motor/Motor.h"
 #include "Sensor/Sensor.h"
-
+#include "CR/CR.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -60,7 +60,7 @@ typedef struct {
  * @param state 系统状态
  * @return 打包后的总长度
  */
-uint16_t cmd_packer_pack_status_frame(uint8_t* frame, GlobalMotor motor_pos[MOTOR_NUM], GlobalSensor sensor_angle[SENSOR_NUM], float scale, uint8_t state);
+uint16_t cmd_packer_pack_status_frame(uint8_t* frame, GlobalMotor motor_pos[MOTOR_NUM], GlobalSensor sensor_angle[SENSOR_NUM], const LQTS *lqts, uint8_t state);
 
 
 

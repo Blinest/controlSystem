@@ -17,6 +17,7 @@
 #include <stdint.h>
 #include "Motor/Motor.h"
 #include "Sensor/Sensor.h"
+#include "CR/CR.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -63,7 +64,7 @@ void cmd_periph_reset(void);
  * @brief 打包系统状态帧 (test_frame 格式)
  * 兼容原有接口，内部调用 cmd_packer_pack_status_frame
  */
-uint16_t cmd_pack_status_frame(uint8_t* frame, GlobalMotor motor[MOTOR_NUM], GlobalSensor sensor[SENSOR_NUM], float scale, uint8_t state);
+uint16_t cmd_pack_status_frame(uint8_t* frame, GlobalMotor motor[MOTOR_NUM], GlobalSensor sensor[SENSOR_NUM], LQTS lqts, uint8_t state);
 
 
 /**

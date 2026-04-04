@@ -24,6 +24,7 @@
 //初始化串口标志
 #include <stdio.h>
 #include <stdarg.h>
+#include <string.h>
 
 #include "Motor/Motor.h"
 #include "Sensor/Sensor.h"
@@ -64,7 +65,7 @@ void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
+  huart1.Init.BaudRate = 9600;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;
@@ -93,7 +94,7 @@ void MX_USART2_UART_Init(void)
 
   /* USER CODE END USART2_Init 1 */
   huart2.Instance = USART2;
-  huart2.Init.BaudRate = 115200;
+  huart2.Init.BaudRate = 9600;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;
@@ -222,24 +223,42 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 }
 
 /* USER CODE BEGIN 1 */
-/*
-************************************************************
-*	函数名称：	Usart_SendString
-*
-*	函数功能：	串口数据发送
-*
-*	入口参数：	USARTx：串口组
-*				str：要发送的数据
-*				len：数据长度
-*
-*	返回参数：	无
-*
-*	说明：
-************************************************************
-*/
+
+/**
+  * @brief  Retargets the C library printf function to the USART.
+  * @param  ch: character to send
+  * @retval ch
+  */
+int __io_putchar(int ch)
+{
+  /* 如果串口 1 处于错误状态，尝试重置 */
+  if (huart1.gState == HAL_UART_STATE_ERROR) {
+      huart1.gState = HAL_UART_STATE_READY;
+      huart1.ErrorCode = HAL_UART_ERROR_NONE;
+  }
+  
+  HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, 10);
+  return ch;
+}
+
+int fputc(int ch, FILE *f)
+{
+  return __io_putchar(ch);
+}
+
 void Usart_SendString(UART_HandleTypeDef *huart, uint8_t *str, uint16_t len)
 {
-  HAL_UART_Transmit(huart, str, len, HAL_MAX_DELAY);
+  /* 强制重置错误状态，确保发送不会因之前的接收错误而阻塞 */
+  if (huart->gState == HAL_UART_STATE_ERROR) {
+      huart->gState = HAL_UART_STATE_READY;
+      huart->ErrorCode = HAL_UART_ERROR_NONE;
+  }
+
+  // 根据数据长度计算合理的超时时间
+  // 9600波特率下，每字节约1.04ms，加上一些余量
+  // 计算公式：超时时间(ms) = (字节数 * 1.5ms) + 20ms（固定余量）
+  uint32_t timeout = (len * 15) / 10 + 20;  // 转换为ms
+  HAL_UART_Transmit(huart, str, len, timeout);
 }
 
 /**
@@ -272,35 +291,116 @@ void parse_motor_feedback(uint8_t *buffer, uint8_t length)
   }
 }
 
-uint8_t rxData1, rxData2;
+uint8_t rxData1 = 0, rxData2 = 0;
 // 启动中断
 void UART1_Receive_Start() {
-  HAL_UART_Receive_IT(&huart1, &rxData1, 1);
-
+  // 启用 RXNE 中断
+  __HAL_UART_ENABLE_IT(&huart1, UART_IT_RXNE);
 }
 
 void UART2_Receive_Start() {
-  HAL_UART_Receive_IT(&huart2, &rxData2, 1);
+  // 启用 RXNE 中断
+  __HAL_UART_ENABLE_IT(&huart2, UART_IT_RXNE);
+}
+
+void USART_RX_CustomHandler(UART_HandleTypeDef *huart)
+{
+  uint32_t sr = READ_REG(huart->Instance->SR);
+  uint32_t cr1 = READ_REG(huart->Instance->CR1);
+  uint8_t data;
+
+  /* 1. 处理接收错误 (ORE, NE, FE, PE) */
+  if (sr & (USART_SR_ORE | USART_SR_NE | USART_SR_FE | USART_SR_PE))
+  {
+    /* 读取 DR 寄存器是清除 F1 系列 ORE 标志的必要步骤 */
+    data = (uint8_t)(huart->Instance->DR & 0xFF);
+    
+    /* 虽然是错误字节，但也尝试入队，防止指令流断裂 */
+    if (huart->Instance == USART2) {
+        osMessageQueuePut(CmdCtrlQueueHandle, &data, 0, 0);
+    } else if (huart->Instance == USART1) {
+        osMessageQueuePut(CmdDataQueueHandle, &data, 0, 0);
+    }
+    
+    /* 清除标志位 */
+    __HAL_UART_CLEAR_OREFLAG(huart);
+    __HAL_UART_CLEAR_FEFLAG(huart);
+    __HAL_UART_CLEAR_NEFLAG(huart);
+    __HAL_UART_CLEAR_PEFLAG(huart);
+    
+    /* 强制重置 HAL 状态，防止 ORE 导致 gState 永久处于 BUSY 或 ERROR */
+    huart->gState = HAL_UART_STATE_READY;
+    huart->RxState = HAL_UART_STATE_READY;
+    huart->ErrorCode = HAL_UART_ERROR_NONE;
+
+    /* 核心修复：确保 RXNE 中断始终开启。HAL 的 IRQ 处理程序在检测到错误时可能会关闭它 */
+    SET_BIT(huart->Instance->CR1, USART_CR1_RXNEIE);
+    return;
+  }
+
+  /* 2. 正常接收处理 (RXNE) */
+  if ((sr & USART_SR_RXNE) && (cr1 & USART_CR1_RXNEIE))
+  {
+    data = (uint8_t)(huart->Instance->DR & 0xFF);
+    
+    if (huart->Instance == USART2) {
+        osMessageQueuePut(CmdCtrlQueueHandle, &data, 0, 0);
+    } else if (huart->Instance == USART1) {
+        osMessageQueuePut(CmdDataQueueHandle, &data, 0, 0);
+    }
+  }
 }
 
 /**
-  * @brief 串口接收中断
+  * @brief 串口接收中断 (HAL 原有的保留，用于 TX 结束等)
   * @param huart: UART 句柄指针
   */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-  if(huart->Instance == USART1)
+  // 这里不再需要调用 HAL_UART_Receive_IT，因为我们使用了寄存器级中断
+}
+
+/**
+  * @brief 串口错误回调函数
+  * @param huart: UART 句柄指针
+  */
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == USART1)
   {
-    // 接收到外设反馈数据，送入 CmdDataQueueHandle
-    osMessageQueuePut(CmdDataQueueHandle, &rxData1, 0, 0);
-    HAL_UART_Receive_IT(&huart1, &rxData1, 1);
+    // 处理所有可能的错误
+    if (__HAL_UART_GET_FLAG(huart, UART_FLAG_ORE) != RESET)
+    {
+      __HAL_UART_CLEAR_OREFLAG(huart);
+    }
+    if (__HAL_UART_GET_FLAG(huart, UART_FLAG_FE) != RESET)
+    {
+      __HAL_UART_CLEAR_FEFLAG(huart);
+    }
+    if (__HAL_UART_GET_FLAG(huart, UART_FLAG_NE) != RESET)
+    {
+      __HAL_UART_CLEAR_NEFLAG(huart);
+    }
+    
+    // 重新启动自定义接收（通过清除错误标志即可，不需要调用 HAL_UART_Receive_IT）
   }
   else if (huart->Instance == USART2)
   {
-  	// 接收到上位机指令，送入 CmdCtrlQueueHandle
-    osMessageQueuePut(CmdCtrlQueueHandle, &rxData2, 0, 0);
-    HAL_UART_Receive_IT(&huart2, &rxData2, 1);
+    if (__HAL_UART_GET_FLAG(huart, UART_FLAG_ORE) != RESET)
+    {
+      __HAL_UART_CLEAR_OREFLAG(huart);
+    }
+    if (__HAL_UART_GET_FLAG(huart, UART_FLAG_FE) != RESET)
+    {
+      __HAL_UART_CLEAR_FEFLAG(huart);
+    }
+    if (__HAL_UART_GET_FLAG(huart, UART_FLAG_NE) != RESET)
+    {
+      __HAL_UART_CLEAR_NEFLAG(huart);
+    }
   }
 }
+
+
 
 /* USER CODE END 1 */
