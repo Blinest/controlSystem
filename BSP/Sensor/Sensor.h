@@ -13,7 +13,7 @@
 
 #include <stdint.h>
 
-#define SENSOR_NUM 4
+#define SENSOR_NUM 1
 
 /**
  * @brief 全局传感器数据结构

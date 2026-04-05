@@ -109,6 +109,7 @@ void emm42_parse_feed_byte(uint8_t byte)
                 emm42_result_t result = emm42_parse(&global_motor[i], emm42_buffer, emm42_idx, true);
                 if (result == EMM42_OK) {
                     // 数据打包发送
+                	global_motor[i].state = 1;
                 	cmd_packer_send_status_frame();
                 }
                 break;
@@ -155,7 +156,6 @@ void sensor_data_parser_feed_byte(uint8_t byte)
         case CMD_STATE_LEN:
             s_sensorLen = receive;
             s_sensorBuf[2] = receive;
-            
             if (s_sensorLen > (SENSOR_BUF_SIZE - 4) || s_sensorLen == 0)
             {
                 sensor_cmd_parser_reset();

@@ -54,6 +54,7 @@ uint8_t armBend_edit(int seg, char direction, double val, double g_u, double g_r
 void deltaL_update(void);
 void autostraight(void);
 int direction_to_index(char direction);
+void scale_squared(uint8_t direction, float val);
 double tendonCompensation(int seg, char direction, double angle_deg);
 extern LQTS lqts;
 #endif

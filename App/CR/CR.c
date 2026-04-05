@@ -69,6 +69,7 @@ void LQTS_init(void)
 // 用于控制喷管弯曲
 uint8_t armBend(int seg, char direction, double val)
 {
+	lqts.joint_space.theta = direction == 1 ? val : -val;
     return armBend_edit(seg, direction, val, 0, 0.15, 0, 0.18, 90.0, 60.0);
 }
 
@@ -90,7 +91,7 @@ void autostraight(void)
 {
     lqts.joint_space.theta = 0;
     lqts.joint_space.phi = 0;
-
+	lqts.operation_space.scale = 0;
     deltaL_update();
 }
 
@@ -158,9 +159,9 @@ double tendonCompensation(int seg, char direction, double angle_deg)
 }
 
 // 用于控制截面面积收缩
-void scale_squared(double val)
+void scale_squared(uint8_t direction, float val)
 {
-
+	lqts.operation_space.scale = direction == 1? val : -val;
 }
 
 uint8_t armBend_edit(int seg, char direction, double val, double g_u, double g_r, double g_d, double g_l, double seg1_limit, double seg2_limit)

@@ -17,11 +17,12 @@
 #include "math.h"
 #include "motor_limits.h"
 #include <stdio.h>
+#include "usart.h"
+#include "CR/kinematic.h"
 
 // 创建电机与电机反馈数据结构体
 MotorFeedback motor_feedback[MOTOR_NUM];
 GlobalMotor global_motor[MOTOR_NUM];
-
 //电机初始化函数
 void motor_init()
 {
@@ -34,9 +35,7 @@ void motor_init()
 		global_motor[i].stepper_motor.step_angle = 1.8; // 步距角
 		global_motor[i].vel_max = 50; // 最大速度建议50rpm以下，速度过高，步进电机(FUYU35, 2025年)会出现抖动
 		global_motor[i].current_acc = 0; // 由于位移量较小，为提高响应速度，直接启动，不做加减速处理 (0-255)
-		global_motor[i].stepper_motor.current_acc = 0;
-		global_motor[i].stepper_motor.current_pos = 30;
-		global_motor[i].state = 0x01;
+
 		// 初始化历史记录 (防止信号干扰检测)
 		motor_history_init(i);
 	}
@@ -46,17 +45,8 @@ void motor_init()
 // 单电机使能函数
 void motor_enable(uint8_t addr)
 {
-	for (int i = 0; i < MOTOR_NUM; i++)
-	{
-		if (global_motor[i].id == addr)
-		{
-			// 更新电机状态，(电机使能状态 0x02)
-			Emm_V5_En_Control(addr, 1, 0);
-			global_motor[i].state = 0x02;
-			break;
-		}
-	}
-
+	// 更新电机状态，(电机使能状态 0x02)
+	Emm_V5_En_Control(addr, 1, 0);
 }
 
 // 错误处理函数（增强版，支持限制条件错误）
@@ -172,16 +162,19 @@ void motor_auto_calibrate(uint8_t addr)
   * @param snf: 同步标志位，true同步
   */
 void motor_run(int addr, float speed, float target, bool snf) {
-	int idx = (addr >= MOTOR_ID && addr < MOTOR_ID + MOTOR_NUM) ? (addr - MOTOR_ID) : 0;
-	
+	int idx = 0;
+	for (int i = 0; i < MOTOR_NUM; i++)
+	{
+		if (global_motor[i].id == addr) idx = i;
+	}
 	// ==================== 限制条件检查 ====================
 	float current_pos = global_motor[idx].stepper_motor.current_pos;
 	float displacement = target - current_pos;
-	
+	/* 临时解除限制
 	// 1. 检查所有限制条件
 	uint8_t limit_error = motor_check_all_limits((float)speed, 0.0f, displacement, current_pos);
 	if (limit_error != MOTOR_LIMIT_OK) {
-		printf("[MOTOR] 电机%d运行限制检查失败: %s\n", 
+		printf("[MOTOR] 电机%d运行限制检查失败: %s\n",
 		       addr, motor_get_limit_error_string(limit_error));
 		motor_error_handler(addr, 0x04); // 限制条件错误
 		return;
@@ -191,25 +184,15 @@ void motor_run(int addr, float speed, float target, bool snf) {
 	uint32_t current_time = HAL_GetTick();
 	uint8_t change_error = motor_check_change_with_history(idx, (float)speed, 0.0f, target, current_time);
 	if (change_error != MOTOR_LIMIT_OK) {
-		printf("[MOTOR] 电机%d参数突变过大: %s\n", 
-		       addr, motor_get_limit_error_string(change_error));
 		motor_error_handler(addr, 0x05); // 参数突变错误
 		return;
 	}
-	
+	*/
 	// 3. 应用限制条件 (钳位)
 	float limited_speed = motor_apply_velocity_limit((float)speed);
 	float limited_displacement = motor_apply_displacement_limit(displacement, current_pos);
 	float limited_target = current_pos + limited_displacement;
-	
-	// 如果限制后有变化，记录日志
-	if (fabsf(limited_speed - speed) > 0.1f) {
-		printf("[MOTOR] 电机%d速度从%.1f限制到%.1f rpm\n", addr, (float)speed, limited_speed);
-	}
-	if (fabsf(limited_displacement - displacement) > 0.1f) {
-		printf("[MOTOR] 电机%d位移从%.2f限制到%.2f mm\n", addr, displacement, limited_displacement);
-	}
-	
+
 	// ==================== 执行控制 ====================
 	int xifen = global_motor[idx].stepper_motor.xifen;
 	int daocheng = global_motor[idx].stepper_motor.daocheng;
@@ -223,25 +206,20 @@ void motor_run(int addr, float speed, float target, bool snf) {
 	// 更新电机状态
 	global_motor[idx].stepper_motor.target_pos = limited_target;
 	global_motor[idx].stepper_motor.target_vel = (uint16_t)limited_speed;
-	
-	printf("[MOTOR] 电机%d运行: 目标位置=%.2fmm, 速度=%.1frpm\n", 
-	       addr, limited_target, limited_speed);
-	
+
+	// 模拟电机运行
+	global_motor[0].stepper_motor.current_acc = 10;
+	global_motor[idx].stepper_motor.current_pos = limited_target;
 	Emm_V5_Pos_Control(addr, dir, (uint16_t)limited_speed, (uint8_t)global_motor[idx].current_acc, clk, true, snf);
 }
 
 // 电机紧急停止函数
 void motor_stop_all()
 {
-	//char message[64];
-	// 发送紧急停止消息
-	// sprintf(message, "stop all motors！\r\n");
-	// UART2_SendString(message);
 	for(int i = 0; i < MOTOR_NUM; i++) {
-		// Emm_V5_Stop_Now(motor[i].id, false);
-
-		// 更新电机状态(电机停止状态0xEE)
-		global_motor[i].state = 0xEE;
+		Emm_V5_Stop_Now(global_motor[i].id, false);
+		// 更新电机状态(电机停止状态0)
+		global_motor[i].state = 0;
 	}
 }
 // 单电机控制函数（带限制条件）
@@ -257,24 +235,14 @@ void motor_single_control(uint8_t addr, uint8_t direction, float distance)
 	float default_speed = global_motor[idx].vel_max * 0.5f; // 使用50%最大速度
 	uint8_t limit_error = motor_check_all_limits(default_speed, 0.0f, displacement, current_pos);
 	
-	if (limit_error != MOTOR_LIMIT_OK) {
-		printf("[MOTOR] 电机%d单控制限制检查失败: %s\n", 
-		       addr, motor_get_limit_error_string(limit_error));
-		motor_error_handler(addr, 0x04); // 限制条件错误
-		return;
-	}
+
 	
 	// 2. 检查突变
 	uint32_t current_time = HAL_GetTick();
 	float target_pos = current_pos + displacement;
 	uint8_t change_error = motor_check_change_with_history(idx, default_speed, 0.0f, target_pos, current_time);
 	
-	if (change_error != MOTOR_LIMIT_OK) {
-		printf("[MOTOR] 电机%d单控制参数突变: %s\n", 
-		       addr, motor_get_limit_error_string(change_error));
-		motor_error_handler(addr, 0x05); // 参数突变错误
-		return;
-	}
+
 	
 	// 3. 应用限制条件
 	float limited_displacement = motor_apply_displacement_limit(displacement, current_pos);
@@ -303,10 +271,6 @@ void motor_single_control(uint8_t addr, uint8_t direction, float distance)
 void motor_sync_control(uint8_t count, uint8_t start_addr, float distance[])
 {
 	int size = count;
-	if (size <= 0 || size > MOTOR_NUM) {
-		printf("[MOTOR] 同步控制: 无效的电机数量 %d\n", size);
-		return;
-	}
 	
 	// ==================== 限制条件检查 ====================
 	float limited_distances[MOTOR_NUM];
@@ -323,20 +287,12 @@ void motor_sync_control(uint8_t count, uint8_t start_addr, float distance[])
 		float current_pos = global_motor[idx].stepper_motor.current_pos;
 		float displacement = distance[i];
 		
-		// 检查位移限制
-		uint8_t limit_error = motor_check_all_limits(0.0f, 0.0f, displacement, current_pos);
-		if (limit_error != MOTOR_LIMIT_OK) {
-			printf("[MOTOR] 电机%d同步控制位移限制失败: %s\n", 
-			       motor_id, motor_get_limit_error_string(limit_error));
-			error_count++;
-			limited_distances[i] = 0; // 错误时设为0
-			continue;
-		}
-		
+
+
 		// 应用位移限制
 		float limited_displacement = motor_apply_displacement_limit(displacement, current_pos);
 		limited_distances[i] = limited_displacement;
-		
+
 		// 计算绝对位移用于速度分配
 		float abs_distance = fabsf(limited_displacement);
 		max_distance = fmax(max_distance, abs_distance);
@@ -346,17 +302,7 @@ void motor_sync_control(uint8_t count, uint8_t start_addr, float distance[])
 			       motor_id, displacement, limited_displacement);
 		}
 	}
-	
-	// 如果有太多错误，中止操作
-	if (error_count > size / 2) {
-		printf("[MOTOR] 同步控制: %d/%d个电机检查失败，中止操作\n", error_count, size);
-		return;
-	}
-	
-	if (max_distance == 0) {
-		printf("[MOTOR] 同步控制: 所有位移为0\n");
-		return;
-	}
+
 	
 	// ==================== 速度分配 ====================
 	// 动态速度调整：线性比例控制，考虑每个电机的最大速度限制
@@ -402,19 +348,7 @@ void motor_sync_control(uint8_t count, uint8_t start_addr, float distance[])
 
 void motor_kinematic_control (Kinematic kinematic, uint8_t R, float theta, float phi, float deltaL[])
 {
-	// ==================== 输入参数检查 ====================
-	// 检查运动学参数范围
-	if (isnan(theta) || isinf(theta) || isnan(phi) || isinf(phi)) {
-		printf("[MOTOR] 运动学控制: 无效的角度参数 theta=%.2f, phi=%.2f\n", theta, phi);
-		return;
-	}
-	
-	// 角度限制 (通常theta和phi在合理范围内)
-	if (fabsf(theta) > 180.0f || fabsf(phi) > 180.0f) {
-		printf("[MOTOR] 运动学控制: 角度超出范围 theta=%.2f, phi=%.2f\n", theta, phi);
-		return;
-	}
-	
+
 	// ==================== 计算肌腱长度变化 ====================
 	kinematic(R, theta, phi, deltaL);
 	
@@ -444,28 +378,12 @@ void motor_kinematic_control (Kinematic kinematic, uint8_t R, float theta, float
 // 自定义多电机控制函数（带限制条件）
 void motor_custom_control(uint8_t count, uint8_t *params)
 {
-	if (count == 0 || params == NULL) {
-		printf("[MOTOR] 自定义控制: 无效参数\n");
-		return;
-	}
-	
 	// ==================== 参数解析和检查 ====================
 	// 假设参数格式: [电机数量][电机1地址][速度高][速度低][位移高][位移低]...
 	// 实际格式应根据具体协议定义
-	
+
 	uint8_t motor_count = params[0];
-	if (motor_count > MOTOR_NUM || motor_count > count) {
-		printf("[MOTOR] 自定义控制: 电机数量无效 %d\n", motor_count);
-		return;
-	}
-	
-	// 检查参数长度
-	uint8_t expected_length = 1 + motor_count * 5; // 1字节数量 + 每个电机5字节
-	if (count < expected_length) {
-		printf("[MOTOR] 自定义控制: 参数长度不足 %d < %d\n", count, expected_length);
-		return;
-	}
-	
+
 	// ==================== 解析并检查每个电机参数 ====================
 	float distances[MOTOR_NUM] = {0};
 	uint16_t speeds[MOTOR_NUM] = {0};
@@ -474,14 +392,7 @@ void motor_custom_control(uint8_t count, uint8_t *params)
 	uint8_t param_idx = 1;
 	for (int i = 0; i < motor_count; i++) {
 		uint8_t motor_addr = params[param_idx++];
-		
-		// 检查电机地址
-		if (motor_addr < MOTOR_ID || motor_addr >= MOTOR_ID + MOTOR_NUM) {
-			printf("[MOTOR] 自定义控制: 无效电机地址 %d\n", motor_addr);
-			error_count++;
-			param_idx += 4; // 跳过剩余参数
-			continue;
-		}
+
 		
 		// 解析速度 (2字节)
 		uint16_t speed = (params[param_idx] << 8) | params[param_idx + 1];
@@ -495,15 +406,8 @@ void motor_custom_control(uint8_t count, uint8_t *params)
 		// 检查参数有效性
 		int idx = motor_addr - MOTOR_ID;
 		float current_pos = global_motor[idx].stepper_motor.current_pos;
-		
-		// 检查限制条件
-		uint8_t limit_error = motor_check_all_limits((float)speed, 0.0f, displacement, current_pos);
-		if (limit_error != MOTOR_LIMIT_OK) {
-			printf("[MOTOR] 电机%d自定义控制限制失败: %s\n", 
-			       motor_addr, motor_get_limit_error_string(limit_error));
-			error_count++;
-			continue;
-		}
+
+
 		
 		// 应用限制条件
 		float limited_speed = motor_apply_velocity_limit((float)speed);
@@ -511,24 +415,11 @@ void motor_custom_control(uint8_t count, uint8_t *params)
 		
 		speeds[i] = (uint16_t)limited_speed;
 		distances[i] = limited_displacement;
-		
-		// 记录限制情况
-		if (fabsf(limited_speed - speed) > 0.1f) {
-			printf("[MOTOR] 电机%d速度从%d限制到%d rpm\n", motor_addr, speed, (uint16_t)limited_speed);
-		}
-		if (fabsf(limited_displacement - displacement) > 0.1f) {
-			printf("[MOTOR] 电机%d位移从%.2f限制到%.2f mm\n", motor_addr, displacement, limited_displacement);
-		}
+
 	}
-	
-	// 如果有太多错误，中止操作
-	if (error_count > motor_count / 2) {
-		printf("[MOTOR] 自定义控制: %d/%d个电机检查失败，中止操作\n", error_count, motor_count);
-		return;
-	}
-	
+
+
 	// ==================== 执行控制 ====================
-	printf("[MOTOR] 自定义控制 %d个电机\n", motor_count);
 	
 	// 可以使用同步控制或单独控制
 	// 这里使用单独控制，因为每个电机可能有不同速度
@@ -701,7 +592,6 @@ void motor_bend_control(uint8_t direction, float angle)
 {
     printf("[MOTOR] 喷管弯曲控制: 方向=%s, 角度=%.2f度\n", 
            direction ? "正" : "负", angle / 100.0f);
-    
     // 1. 将角度转换为电机位移
     // 这里需要根据实际机械结构计算每个电机需要的位移
     // 假设有4个电机控制喷管弯曲，使用简单的线性模型
@@ -713,30 +603,17 @@ void motor_bend_control(uint8_t direction, float angle)
     float base_displacement = angle / 100.0f * 10.0f; // 每度对应10mm位移
     
     // 根据方向分配位移
-    if (direction == 1) {
-        // 正方向：电机1和3正位移，电机2和4负位移
-        motor_displacements[0] = base_displacement;
-        motor_displacements[1] = -base_displacement;
-        motor_displacements[2] = base_displacement;
-        motor_displacements[3] = -base_displacement;
-    } else {
-        // 负方向：电机1和3负位移，电机2和4正位移
-        motor_displacements[0] = -base_displacement;
-        motor_displacements[1] = base_displacement;
-        motor_displacements[2] = -base_displacement;
-        motor_displacements[3] = base_displacement;
-    }
+
     
     // 2. 限制位移范围
     for (int i = 0; i < MOTOR_NUM; i++) {
         if (motor_displacements[i] > 100.0f) motor_displacements[i] = 100.0f;
         if (motor_displacements[i] < -100.0f) motor_displacements[i] = -100.0f;
     }
-    
     // 3. 调用多电机同步控制
     motor_sync_control(MOTOR_NUM, MOTOR_ID, motor_displacements);
     
-    printf("[MOTOR] 喷管弯曲控制完成，各电机位移: ");
+
     for (int i = 0; i < MOTOR_NUM; i++) {
         printf("M%d:%.2fmm ", i+1, motor_displacements[i]);
     }
@@ -745,11 +622,12 @@ void motor_bend_control(uint8_t direction, float angle)
 
 /**
  * @brief 截面收缩控制函数
+ * @param dir 方向
  * @param scale 收缩比例 (单位: 百分比，已乘以100)
  * 
- * 根据收缩比例，控制多个电机实现截面收缩
+ * 根据收缩比例，控制单个电机实现
  */
-void motor_scale_control(float scale)
+void motor_scale_control(uint8_t dir, float scale)
 {
     printf("[MOTOR] 截面收缩控制: 比例=%.2f%%\n", scale / 100.0f);
     
@@ -762,72 +640,37 @@ void motor_scale_control(float scale)
     // 简化模型：比例转换为位移
     // 50%比例对应0位移，0%和100%对应最大位移
     float base_displacement = (scale / 100.0f - 0.5f) * 20.0f; // 比例转换为位移
+	global_motor[3].stepper_motor.target_pos = base_displacement;
+	global_motor[3].stepper_motor.current_acc = 3;
     
-    // 所有电机同步移动
-    for (int i = 0; i < MOTOR_NUM; i++) {
-        motor_displacements[i] = base_displacement;
-    }
+    // 3. 调用电机运行函数
+    motor_run(global_motor[3].id, global_motor[3].stepper_motor.current_vel, global_motor[3].stepper_motor.target_pos, 0);
     
-    // 2. 限制位移范围
-    for (int i = 0; i < MOTOR_NUM; i++) {
-        if (motor_displacements[i] > 50.0f) motor_displacements[i] = 50.0f;
-        if (motor_displacements[i] < -50.0f) motor_displacements[i] = -50.0f;
-    }
-    
-    // 3. 调用多电机同步控制
-    motor_sync_control(MOTOR_NUM, MOTOR_ID, motor_displacements);
-    
-    printf("[MOTOR] 截面收缩控制完成，各电机位移: ");
-    for (int i = 0; i < MOTOR_NUM; i++) {
-        printf("M%d:%.2fmm ", i+1, motor_displacements[i]);
-    }
-    printf("\n");
+
 }
 
 /**
  * @brief 完整电机控制函数
  * @param addr 电机地址
- * @param dir_x X轴方向 (0:负, 1:正)
- * @param dist_x X轴距离 (已乘以100)
- * @param dir_y Y轴方向
- * @param dist_y Y轴距离
- * @param dir_z Z轴方向
- * @param dist_z Z轴距离
- * @param velocity 速度 (已乘以100)
- * @param acceleration 加速度 (已乘以100)
+ * @param dir 方向 (0:负, 1:正)
+ * @param dist 位移
+ * @param velocity 速度
+ * @param acceleration 加速度
  * 
  * 控制单个电机的完整参数
  */
-void motor_full_control(uint8_t addr, uint8_t dir_x, float dist_x, uint8_t dir_y, float dist_y,
-                       uint8_t dir_z, float dist_z, float velocity, float acceleration)
+void motor_full_control(uint8_t idx, uint8_t dir, float dist,  float velocity, float acceleration)
 {
-    printf("[MOTOR] 完整电机控制: 电机%d\n", addr);
-    printf("  X: %s%.2fmm, Y: %s%.2fmm, Z: %s%.2fmm\n",
-           dir_x ? "+" : "-", dist_x / 100.0f,
-           dir_y ? "+" : "-", dist_y / 100.0f,
-           dir_z ? "+" : "-", dist_z / 100.0f);
-    printf("  速度: %.2frpm, 加速度: %.2fmm/s²\n", 
-           velocity / 100.0f, acceleration / 100.0f);
-    
-    int idx = (addr >= MOTOR_ID && addr < MOTOR_ID + MOTOR_NUM) ? (addr - MOTOR_ID) : 0;
-    
     // 更新全局结构体中的目标值
-    float displacement_x = (dir_x == 0) ? -dist_x / 100.0f : dist_x / 100.0f;
-    float displacement_y = (dir_y == 0) ? -dist_y / 100.0f : dist_y / 100.0f;
-    float displacement_z = (dir_z == 0) ? -dist_z / 100.0f : dist_z / 100.0f;
-    
-    // 这里假设控制的是三维坐标，实际可能需要根据机械结构转换
-    // 简化：使用X轴位移作为主要控制
-    float total_displacement = displacement_x;
+    float displacement = (dir == 0) ? -dist  : dist ;
     
     // 更新目标位置和速度
-    global_motor[idx].stepper_motor.target_pos = global_motor[idx].stepper_motor.current_pos + total_displacement;
-    global_motor[idx].stepper_motor.target_vel = (uint16_t)(velocity / 100.0f);
-    global_motor[idx].current_acc = acceleration / 100.0f;
+    global_motor[idx].stepper_motor.target_pos = global_motor[idx].stepper_motor.current_pos + displacement;
+    global_motor[idx].stepper_motor.target_vel = velocity;
+    global_motor[idx].stepper_motor.current_acc = acceleration;
     
     // 调用电机运行函数
-    motor_run(addr, velocity / 100.0f, 
-              global_motor[idx].stepper_motor.current_pos + total_displacement, false);
-    
-    printf("[MOTOR] 完整电机控制完成\n");
+    motor_run(global_motor[idx].id, velocity / 100.0f,
+              global_motor[idx].stepper_motor.current_pos + displacement, false);
+
 }

@@ -17,6 +17,7 @@
 #include "string.h"
 #include <stdio.h>
 
+#include "cmd_packer.h"
 
 
 // 引用外部队列
@@ -99,9 +100,7 @@ static void pc_cmd_parse_and_execute(void)
                         uint8_t addr = s_ctrlBuf[3];      // 电机地址
                         uint8_t direction = s_ctrlBuf[4]; // 方向 (0:负方向, 1:正方向)
                         uint16_t distance = (s_ctrlBuf[5] << 8) | s_ctrlBuf[6]; // 距离
-                        // 测试用
-                        printf("[CMD] 单电机控制: addr=%d, dir=%d, dist=%d\n", 
-                               addr, direction, distance);
+
                         
                         // 调用单电机控制函数
                         motor_single_control(addr, direction, distance);
@@ -112,24 +111,17 @@ static void pc_cmd_parse_and_execute(void)
                     // 多电机同步控制: 数量 + 起始地址 + 距离数组
                     if (data_len >= 2) {
                         uint8_t count = s_ctrlBuf[3];      // 电机数量
-                        uint8_t start_addr = s_ctrlBuf[4]; // 起始地址
-                        
-                        // 增加边界检查，防止栈溢出
-                        if (count > MOTOR_NUM) count = MOTOR_NUM;
-
-                        if (data_len >= (2 + count * 2)) {
-                            float distances[MOTOR_NUM];
-                            printf("[CMD] 多电机同步: count=%d, start_addr=%d\n", count, start_addr);
-                            
-                            // 解析距离数组
-                            for (int i = 0; i < count; i++) {
-                                distances[i] =(float)((s_ctrlBuf[5 + i*2] << 8) | s_ctrlBuf[6 + i*2]);
-                                printf("  电机%d: 距离=%f\n", start_addr + i, distances[i]);
-                            }
-                            
-                            // 调用多电机同步控制函数
-                            motor_sync_control(count, start_addr, distances);
-                        }
+                        uint8_t start_idx = s_ctrlBuf[4]; // 起始索引
+	                    // 增加边界检查，防止栈溢出
+	                    if (count > MOTOR_NUM) count = MOTOR_NUM;
+	                    float distances[MOTOR_NUM];
+	                    int temp = 0;
+	                    // 解析距离数组
+	                    for (int i = 0; i < count; i++) {
+	                        distances[i] =(float)((s_ctrlBuf[5 + i*2] << 8) | s_ctrlBuf[6 + i*2]);
+	                        if (distances[i] != 0) temp++;
+						}
+						temp == 0 ? autostraight() : motor_sync_control(count, start_idx, distances);
                     }
                     break;
                     
@@ -161,52 +153,34 @@ static void pc_cmd_parse_and_execute(void)
                         uint8_t count = s_ctrlBuf[3]; // 电机数量
                         
                         if (data_len >= (1 + count * 3)) {
-                            printf("[CMD] 自定义电机控制: count=%d\n", count);
-                            
                             // 检查是否是特殊指令
                             if (count == 1) {
                                 uint8_t addr = s_ctrlBuf[4];
-                                
                                 if (addr == 0xFE) {
                                     // 喷管弯曲指令: 地址=0xFE, 方向, 角度
                                     uint8_t direction = s_ctrlBuf[5];
                                     uint16_t angle = (s_ctrlBuf[6] << 8) | s_ctrlBuf[7];
-                                    
-                                    printf("[CMD] 喷管弯曲: 方向=%s, 角度=%.2f度\n", 
-                                           direction ? "正" : "负", angle / 100.0f);
-                                    
+									double val = (double)angle / 100;
                                     // 调用喷管弯曲控制函数
-                                    motor_bend_control(direction, angle);
+                                	armBend(1,direction, val);
+
                                 } else if (addr == 0xFD) {
                                     // 截面收缩指令: 地址=0xFD, 方向, 比例
                                     uint8_t direction = s_ctrlBuf[5];
                                     uint16_t scale = (s_ctrlBuf[6] << 8) | s_ctrlBuf[7];
-                                    
-                                    printf("[CMD] 截面收缩: 比例=%.2f%%\n", scale / 100.0f);
-                                    
-                                    // 调用截面收缩控制函数
-                                    motor_scale_control(scale);
-                                } else if (data_len >= 11) {
-                                    // 完整电机控制指令: 地址 + 方向X + 距离X + 方向Y + 距离Y + 方向Z + 距离Z + 速度 + 加速度
-                                    uint8_t direction_x = s_ctrlBuf[5];
-                                    uint16_t distance_x = (s_ctrlBuf[6] << 8) | s_ctrlBuf[7];
-                                    uint8_t direction_y = s_ctrlBuf[8];
-                                    uint16_t distance_y = (s_ctrlBuf[9] << 8) | s_ctrlBuf[10];
-                                    uint8_t direction_z = s_ctrlBuf[11];
-                                    uint16_t distance_z = (s_ctrlBuf[12] << 8) | s_ctrlBuf[13];
-                                    uint16_t velocity = (s_ctrlBuf[14] << 8) | s_ctrlBuf[15];
-                                    uint16_t acceleration = (s_ctrlBuf[16] << 8) | s_ctrlBuf[17];
-                                    
-                                    printf("[CMD] 完整电机控制: 电机%d, X:%s%.2f, Y:%s%.2f, Z:%s%.2f, 速度:%.2f, 加速度:%.2f\n",
-                                           addr,
-                                           direction_x ? "+" : "-", distance_x / 100.0f,
-                                           direction_y ? "+" : "-", distance_y / 100.0f,
-                                           direction_z ? "+" : "-", distance_z / 100.0f,
-                                           velocity / 100.0f, acceleration / 100.0f);
-                                    
+									float val = (float)scale / 100.f;
+                                	scale_squared(direction, val);
+
+                                } else if (data_len >= 8) {
+                                    // 完整电机控制指令: 地址 + 方向 + 距离 + 速度 + 加速度
+                                    uint8_t direction = s_ctrlBuf[5];
+                                    uint16_t dist = (s_ctrlBuf[6] << 8) | s_ctrlBuf[7];
+                                    uint16_t vel = (s_ctrlBuf[9] << 8) | s_ctrlBuf[9];
+                                    uint16_t acc = (s_ctrlBuf[10] << 8) | s_ctrlBuf[11];
+                                    float distance =  direction == 1 ? (float)dist : (float)-dist;
                                     // 调用完整电机控制函数
-                                    motor_full_control(addr, direction_x, distance_x, direction_y, distance_y, 
-                                                      direction_z, distance_z, velocity, acceleration);
+                                    motor_full_control(addr - 1, direction, distance, vel, acc);
+
                                 } else {
                                     // 正常的自定义电机控制
                                     uint8_t params[CTRL_BUF_SIZE]; // 增大临时参数缓冲区，防止溢出
@@ -240,6 +214,7 @@ static void pc_cmd_parse_and_execute(void)
                 case FUNC_MOTOR_ENABLE: // 电机使能
                     for (int i = 0; i < MOTOR_NUM; i++)
                     {
+                    	global_motor[i].state = 1;
                         motor_enable(global_motor[i].id);
                     }
                     break;
@@ -323,6 +298,7 @@ void pc_cmd_parser_feed_byte(uint8_t byte)
                 {
                     case FUNC_MOTOR_SINGLE:
                     case FUNC_MOTOR_KINEMATIC:
+					case FUNC_MOTOR_SYNC:
                     case FUNC_MOTOR_CUSTOM:
                         s_ctrlState = CMD_STATE_LEN;
                         break;
