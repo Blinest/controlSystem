@@ -11,7 +11,8 @@
 #include "cmsis_os2.h"
 #include "main.h"
 #include "string.h"
-#include "usart.h"
+#include "Common/can_driver.h"
+
 #include "Common/cmd_parse_unified.h"
 #include "Motor/Motor.h"
 #include "stdio.h"
@@ -35,19 +36,24 @@ void StartCmdCtrlTask(void *argument)
 	memset(sensor_angle, 0, sizeof(sensor_angle));
     for (;;)
     {
+        // 电机使能放在循环开始，确保每次循环都执行
+        
 	    // 从队列接收上位机指令
-	    // 使用阻塞方式获取队列数据，避免忙等待，让出 CPU 给低优先级任务 (如 DataTask)
-	    if (osMessageQueueGet(CmdCtrlQueueHandle, &receive, NULL, osWaitForever) == osOK) {
+	    // 改为非阻塞轮询模式，避免阻塞导致 motor_enable(1) 只执行一次
+	    if (osMessageQueueGet(CmdCtrlQueueHandle, &receive, NULL, 0) == osOK) {
 	        // 优先回显，提高响应性
-	        Usart_SendString(&huart2, &receive, 1);
-	        
+
 	        if (rx_len < RX_BUF_SIZE) {
 	            rx_buffer[rx_len++] = receive;
 	        	// 进入指令解析函数，指令解析函数负责指令解析，而后再将解析好的指令传给电机进行解析
+
 	        	cmd_parse_feed_byte(receive);
 	        } else {
                 rx_len = 0; // 缓冲区溢出重置
             }
 	    }
+        
+        // 添加小延时，避免过度占用CPU
+		osDelay(100);
 	  }
 }

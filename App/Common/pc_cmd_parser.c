@@ -85,7 +85,6 @@ static void pc_cmd_parse_and_execute(void)
     uint8_t head     = s_ctrlBuf[0];
     uint8_t func     = s_ctrlBuf[1];
     uint8_t data_len = s_ctrlLen;
-    
     if (data_len > 0 && (uint8_t)(3 + data_len) > CTRL_BUF_SIZE)
         return;
         
@@ -95,15 +94,15 @@ static void pc_cmd_parse_and_execute(void)
             switch (func)
             {
                 case FUNC_MOTOR_SINGLE:
-                    // 单电机控制: 地址 + 方向 + 距离
-                    if (data_len >= 3) {
+                    // 单电机控制: 地址 + 方向 + 距离 + 速度 + 加速度
+                    if (data_len >= 8) {
                         uint8_t addr = s_ctrlBuf[3];      // 电机地址
                         uint8_t direction = s_ctrlBuf[4]; // 方向 (0:负方向, 1:正方向)
                         uint16_t distance = (s_ctrlBuf[5] << 8) | s_ctrlBuf[6]; // 距离
-
-                        
+                        uint16_t vel = (s_ctrlBuf[7] << 8) | s_ctrlBuf[8]; // 速度
+                    	uint16_t acc = (s_ctrlBuf[9] << 8) | s_ctrlBuf[10]; // 加速度
                         // 调用单电机控制函数
-                        motor_single_control(addr, direction, distance);
+                        motor_single_control(addr - 1, direction, (float)distance / 100.0f, (float)vel / 100.0f);
                     }
                     break;
                     
@@ -214,14 +213,14 @@ static void pc_cmd_parse_and_execute(void)
                 case FUNC_MOTOR_ENABLE: // 电机使能
                     for (int i = 0; i < MOTOR_NUM; i++)
                     {
-                    	global_motor[i].state = 1;
                         motor_enable(global_motor[i].id);
+                    	HAL_Delay(100);
                     }
                     break;
                     
                 case FUNC_MOTOR_STOP: // 电机停止
                     motor_stop_all();
-                    break;
+                    break;  
                     
                 default:
                     break;
@@ -353,7 +352,7 @@ void pc_cmd_parser_feed_byte(uint8_t byte)
         case CMD_STATE_DATA:
             s_ctrlBuf[s_ctrlIdx++] = receive;
             
-            if (s_ctrlIdx >= (uint8_t)(3 + s_ctrlLen))
+            if (s_ctrlIdx >= (uint8_t)(3 + s_ctrlLen)) // 去除校验位
             {
                 s_ctrlState = CMD_STATE_CHECK;
             }

@@ -25,7 +25,11 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
+
 #include "CR/CR.h"
+#include "../App/Common/can_driver.h"
+#include "string.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -98,8 +102,10 @@ int main(void)
   UART2_Receive_Start();
   // 启动串口1的中断接收
   UART1_Receive_Start();
-  
+  // 启动 CAN
+  CAN_Driver_Init();
   LQTS_init();
+
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -115,6 +121,8 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

@@ -118,7 +118,6 @@ void emm42_parse_feed_byte(uint8_t byte)
         // 重置状态
         emm42_in_frame = false;
         emm42_idx = 0;
-
     }
 }
 

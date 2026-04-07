@@ -23,6 +23,7 @@
 #include "Common/periph_cmd_parser.h"
 #include "Common/cmd_parse_unified.h"
 #include "Common/cmd_packer.h"
+#include "Common/can_driver.h"
 #include "CR/CR.h"
 
 
@@ -35,9 +36,11 @@ void StartDataTask(void *argument)
 {
     uint8_t rx_byte = 0;
     uint8_t tx_byte = 0;
+
     
     for(;;)
     {
+
         // ====================================
         // 1. 数据采集流: 从外设 (CAN 或 Usart RX) 接收并处理
         // ====================================
@@ -83,10 +86,16 @@ void StartDataTask(void *argument)
     	{
     		tx_buffer[tx_buffer_len++] = tx_byte;
     	}
-
     	if (tx_buffer_len > 0) {
     		Usart_SendString(&huart2, tx_buffer, tx_buffer_len);
     	}
+
+    	// uint32_t esr = CAN1->ESR;
+    	// uint32_t tec = (esr >> 16) & 0xFF;
+    	// uint32_t rec = (esr >> 24) & 0xFF;
+    	// char buffer[64];
+    	// sprintf(buffer, "CAN ESR: 0x%08lX, TEC=%3ld, REC=%3ld\r\n", esr, tec, rec);
+    	// Usart_SendString(&huart2, (uint8_t*)buffer, strlen(buffer));
         osDelay(10); // 增加延时，降低 CPU 占用并给串口发送留出时间
     }
 }

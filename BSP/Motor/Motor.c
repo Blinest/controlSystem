@@ -13,7 +13,7 @@
  *
  */
 #include "Motor.h"
-#include "Emm_V5.h"
+#include "ZDT_X42_V2.h"
 #include "math.h"
 #include "motor_limits.h"
 #include <stdio.h>
@@ -30,9 +30,10 @@ void motor_init()
 	for (int i = 0; i < MOTOR_NUM; i++)
 	{
 		global_motor[i].id = MOTOR_ID + i;
-		global_motor[i].stepper_motor.daocheng = 2; // 根据丝杠导程设置，2mm
+		global_motor[i].stepper_motor.daocheng = 9; // 根据丝杠导程设置，9mm
 		global_motor[i].stepper_motor.xifen = 128; // 平滑控制
 		global_motor[i].stepper_motor.step_angle = 1.8; // 步距角
+		global_motor[i].stepper_motor.current_vel = 10; // 如果要完成指标，至少是 10mm/s
 		global_motor[i].vel_max = 50; // 最大速度建议50rpm以下，速度过高，步进电机(FUYU35, 2025年)会出现抖动
 		global_motor[i].current_acc = 0; // 由于位移量较小，为提高响应速度，直接启动，不做加减速处理 (0-255)
 
@@ -46,7 +47,8 @@ void motor_init()
 void motor_enable(uint8_t addr)
 {
 	// 更新电机状态，(电机使能状态 0x02)
-	Emm_V5_En_Control(addr, 1, 0);
+	ZDT_X42_V2_En_Control(addr, 1, 0);
+
 }
 
 // 错误处理函数（增强版，支持限制条件错误）
@@ -65,7 +67,7 @@ void motor_error_handler(uint8_t addr, uint8_t error_code)
                 case 0x01: // 通信超时
                     printf("[MOTOR] 电机%d通信超时\n", addr);
                     // 尝试重新使能电机建立连接
-                    Emm_V5_En_Control(addr,1,0);
+                    ZDT_X42_V2_En_Control(addr,1,0);
                     break;
                     
                 case 0x02: // 过流保护
@@ -134,7 +136,7 @@ void motor_auto_calibrate(uint8_t addr)
             // Emm_V5_Find_Home(addr);
             
             // 2. 校准步进参数
-            global_motor[i].stepper_motor.daocheng = 2; // 默认2mm，可根据实际测量调整
+            global_motor[i].stepper_motor.daocheng = 2; // 默认9mm，可根据实际测量调整
             global_motor[i].stepper_motor.xifen = 128;  // 默认128细分
             
             // 3. 校准最大速度
@@ -157,73 +159,54 @@ void motor_auto_calibrate(uint8_t addr)
 /**
   * @brief 启动步进电机，并达到指定位置（带限制条件）
   * @param addr: 电机地址
-  * @param speed: 速度值, rpm
+  * @param vel 速度值, mm/s
   * @param target: 目标位置(绝对位置), mm
   * @param snf: 同步标志位，true同步
   */
-void motor_run(int addr, float speed, float target, bool snf) {
-	int idx = 0;
-	for (int i = 0; i < MOTOR_NUM; i++)
-	{
-		if (global_motor[i].id == addr) idx = i;
-	}
+void motor_run(int idx, float vel, float target, bool snf) {
+
 	// ==================== 限制条件检查 ====================
 	float current_pos = global_motor[idx].stepper_motor.current_pos;
 	float displacement = target - current_pos;
-	/* 临时解除限制
-	// 1. 检查所有限制条件
-	uint8_t limit_error = motor_check_all_limits((float)speed, 0.0f, displacement, current_pos);
-	if (limit_error != MOTOR_LIMIT_OK) {
-		printf("[MOTOR] 电机%d运行限制检查失败: %s\n",
-		       addr, motor_get_limit_error_string(limit_error));
-		motor_error_handler(addr, 0x04); // 限制条件错误
-		return;
-	}
-	
-	// 2. 检查突变 (使用历史记录)
-	uint32_t current_time = HAL_GetTick();
-	uint8_t change_error = motor_check_change_with_history(idx, (float)speed, 0.0f, target, current_time);
-	if (change_error != MOTOR_LIMIT_OK) {
-		motor_error_handler(addr, 0x05); // 参数突变错误
-		return;
-	}
-	*/
+
 	// 3. 应用限制条件 (钳位)
-	float limited_speed = motor_apply_velocity_limit((float)speed);
+	float min_speed = 10;
 	float limited_displacement = motor_apply_displacement_limit(displacement, current_pos);
 	float limited_target = current_pos + limited_displacement;
 
 	// ==================== 执行控制 ====================
-	int xifen = global_motor[idx].stepper_motor.xifen;
-	int daocheng = global_motor[idx].stepper_motor.daocheng;
-	double step_angle = global_motor[idx].stepper_motor.step_angle;
-	
+	const int xifen = global_motor[idx].stepper_motor.xifen;
+	const int daocheng = global_motor[idx].stepper_motor.daocheng;
+	const double step_angle = global_motor[idx].stepper_motor.step_angle;
+	const float current_vel = min_speed * 60.0f / (float)daocheng;
+	global_motor[idx].current_pos = fabs(limited_target / daocheng * 360.0f);
+	global_motor[idx].current_vel =  current_vel;
 	// 位置计算 (使用限制后的参数)
-	float distance = xifen * 360.0f / step_angle * limited_target / daocheng;
+	const float distance = xifen * 360.0f / step_angle * limited_target / daocheng;
 	const int dir = distance > 0 ? 1:0;
-	const uint32_t clk = (uint32_t)fabs(distance);
+	//const uint32_t clk = (uint32_t)fabs(distance);
 	
 	// 更新电机状态
 	global_motor[idx].stepper_motor.target_pos = limited_target;
-	global_motor[idx].stepper_motor.target_vel = (uint16_t)limited_speed;
+	global_motor[idx].stepper_motor.target_vel = (uint16_t)min_speed;
 
 	// 模拟电机运行
-	global_motor[0].stepper_motor.current_acc = 10;
+	global_motor[0].stepper_motor.current_acc = 0;
 	global_motor[idx].stepper_motor.current_pos = limited_target;
-	Emm_V5_Pos_Control(addr, dir, (uint16_t)limited_speed, (uint8_t)global_motor[idx].current_acc, clk, true, snf);
+	ZDT_X42_V2_Bypass_Position_LV_Control(global_motor[idx].id, dir, current_vel, global_motor[idx].current_pos, 1, snf);
+
 }
 
 // 电机紧急停止函数
 void motor_stop_all()
 {
 	for(int i = 0; i < MOTOR_NUM; i++) {
-		Emm_V5_Stop_Now(global_motor[i].id, false);
-		// 更新电机状态(电机停止状态0)
+		ZDT_X42_V2_Stop_Now(global_motor[i].id, false);
 		global_motor[i].state = 0;
 	}
 }
 // 单电机控制函数（带限制条件）
-void motor_single_control(uint8_t addr, uint8_t direction, float distance)
+void motor_single_control(uint8_t addr, uint8_t direction, float distance, float vel)
 {
 	int idx = (addr >= MOTOR_ID && addr < MOTOR_ID + MOTOR_NUM) ? (addr - MOTOR_ID) : 0;
 	
@@ -233,39 +216,18 @@ void motor_single_control(uint8_t addr, uint8_t direction, float distance)
 	
 	// 1. 检查所有限制条件 (使用默认速度)
 	float default_speed = global_motor[idx].vel_max * 0.5f; // 使用50%最大速度
-	uint8_t limit_error = motor_check_all_limits(default_speed, 0.0f, displacement, current_pos);
-	
+	if (vel > default_speed) vel = default_speed;
 
-	
-	// 2. 检查突变
-	uint32_t current_time = HAL_GetTick();
-	float target_pos = current_pos + displacement;
-	uint8_t change_error = motor_check_change_with_history(idx, default_speed, 0.0f, target_pos, current_time);
-	
-
-	
-	// 3. 应用限制条件
+	// 2. 应用限制条件
 	float limited_displacement = motor_apply_displacement_limit(displacement, current_pos);
 	float limited_target = current_pos + limited_displacement;
-	
-	// 如果位移被限制，调整方向
-	uint8_t limited_direction = (limited_displacement >= 0) ? 1 : 0;
-	uint16_t limited_distance = (uint16_t)fabsf(limited_displacement);
-	
-	if (fabsf(limited_displacement - displacement) > 0.1f) {
-		printf("[MOTOR] 电机%d单控制位移从%f限制到%d mm\n",
-		       addr, distance, limited_distance);
-	}
-	
+
 	// ==================== 执行控制 ====================
 	// 更新电机状态
 	global_motor[idx].stepper_motor.target_pos = limited_target;
-	
-	printf("[MOTOR] 电机%d单控制: 方向=%d, 距离=%dmm\n", 
-	       addr, limited_direction, limited_distance);
-	
+	global_motor[idx].stepper_motor.target_vel = vel;
 	// 调用底层控制函数
-	motor_run(addr, (uint16_t)default_speed, limited_target, false);
+	motor_run(addr, (uint16_t)vel, limited_target, false);
 }
 // 多电机同步控制函数（带限制条件）
 void motor_sync_control(uint8_t count, uint8_t start_addr, float distance[])
@@ -329,8 +291,7 @@ void motor_sync_control(uint8_t count, uint8_t start_addr, float distance[])
 	
 	// ==================== 执行同步控制 ====================
 	printf("[MOTOR] 同步控制 %d个电机: 最大位移=%.2fmm\n", size, max_distance);
-	
-	Emm_V5_Synchronous_motion(0);
+	ZDT_X42_V2_Synchronous_motion(0);
 
 	
 	for (int i = 0; i < size; i++)
@@ -342,7 +303,7 @@ void motor_sync_control(uint8_t count, uint8_t start_addr, float distance[])
 		motor_run(motor_id, speed[i], target_pos, true);
 	}
 	
-	Emm_V5_Synchronous_motion(0);
+	ZDT_X42_V2_Synchronous_motion(0);
 }
 // 基于运动学的多电机控制函数（带限制条件）
 

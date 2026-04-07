@@ -16,7 +16,7 @@
 **********************************************************/
 
 #define MOTOR_NUM 4 // 定义电机数量
-#define MOTOR_ID 4 // 定义电机起始 ID
+#define MOTOR_ID 1 // 定义电机起始 ID
 
 // ==================== Emm_V5 步进闭环：反馈指令帧结构体 ====================
 // 帧格式以 `0x6B` 结尾（文档称“校验字节”，发送端固定为 0x6B）
@@ -110,7 +110,7 @@ typedef struct GlobalMotor
 	uint8_t last_response_time;
 	uint8_t timeout_threshold;
 	float current_pos; // rad
-	float current_vel; // rpm -> rad/s
+	float current_vel; // rpm
 	float current_acc; // rad/s^2
 	float target_pos;
 	float target_vel;
@@ -121,10 +121,10 @@ typedef struct GlobalMotor
 } GlobalMotor;
 
 void motor_init();
-void motor_run(int addr, float speed, float target, bool snf);
+void motor_run(int idx, float vel, float target, bool snf);
 void motor_enable(uint8_t addr);
 void motor_stop_all();
-void motor_single_control(uint8_t addr, uint8_t direction, float distance);
+void motor_single_control(uint8_t addr, uint8_t direction, float distance, float vel);
 void motor_sync_control(uint8_t count, uint8_t start_addr, float distance[]);
 
 typedef void (*Kinematic)(uint8_t R, float theta, float phi, float deltaL[]);

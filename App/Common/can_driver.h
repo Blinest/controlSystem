@@ -35,13 +35,12 @@ void CAN_Driver_Init(void);
 void CAN_Driver_Start(void);
 
 // 发送函数
-uint8_t CAN_Driver_Send(uint32_t id, uint8_t* data, uint8_t len);
-uint8_t CAN_Driver_Send_Motor_Ctrl(uint8_t motor_id, uint8_t func, uint8_t* data, uint8_t len);
-uint8_t CAN_Driver_Send_Sensor_Read(uint8_t sensor_id, uint8_t func);
+void CAN_SendCmd(CAN_HandleTypeDef *hcan, uint32_t can_id, uint8_t *cmd, uint8_t len);
+
 
 // 接收函数
 uint8_t CAN_Driver_Receive(CAN_Message_t* msg);
-uint8_t CAN_Driver_Get_Rx_Count(void);
+
 
 
 
