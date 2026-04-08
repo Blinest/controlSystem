@@ -106,7 +106,7 @@ void emm42_parse_feed_byte(uint8_t byte)
         for (int i = 0; i < MOTOR_NUM; i++) {
             if (global_motor[i].id == emm42_buffer[0]) {
                 // 使用 Emm42_command.h 中的解析函数
-                emm42_result_t result = emm42_parse(&global_motor[i], emm42_buffer, emm42_idx, true);
+                emm42_result_t result = emm42_parse_can(&global_motor[i],global_motor[i].id, emm42_buffer, emm42_idx, true);
                 if (result == EMM42_OK) {
                     // 数据打包发送
                 	global_motor[i].state = 1;

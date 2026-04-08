@@ -19,6 +19,7 @@
  * @param verify_cs  是否验证校验字节（建议 true）
  * @return 解析结果
  */
+;
 emm42_result_t emm42_parse_can(GlobalMotor *m, uint32_t can_ext_id,
                                const uint8_t *buf, int len, bool verify_cs)
 {

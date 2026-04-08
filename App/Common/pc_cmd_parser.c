@@ -30,12 +30,13 @@
 /* 电机功能码定义 */
 typedef enum
 {
- FUNC_MOTOR_ENABLE     = 0x01,   /* 电机使能 */
- FUNC_MOTOR_STOP       = 0x02,   /* 多电机停止指令 */
- FUNC_MOTOR_SINGLE     = 0x03,   /* 单电机控制：addr + direction + distance */
- FUNC_MOTOR_SYNC       = 0x04,   /* 多电机同步：count + start_addr + distances... */
- FUNC_MOTOR_KINEMATIC  = 0x05,   /* 基于运动学的协同控制（无数据段） */
- FUNC_MOTOR_CUSTOM     = 0x06,   /* 自定义多电机控制：count + [addr, direction, distance]... */
+	FUNC_MOTOR_CLOSE	= 0x00,   /* 电机失能 */
+	FUNC_MOTOR_ENABLE   = 0x01,   /* 电机使能 */
+	FUNC_MOTOR_STOP     = 0x02,   /* 多电机停止指令 */
+	FUNC_MOTOR_SINGLE   = 0x03,   /* 单电机控制：addr + direction + distance */
+	FUNC_MOTOR_SYNC     = 0x04,   /* 多电机同步：count + start_addr + distances... */
+	FUNC_MOTOR_KINEMATIC= 0x05,   /* 基于运动学的协同控制（无数据段） */
+	FUNC_MOTOR_CUSTOM   = 0x06,   /* 自定义多电机控制：count + [addr, direction, distance]... */
 } MotorFuncCode_t;
 
 /* 传感器功能码定义 */
@@ -93,6 +94,26 @@ static void pc_cmd_parse_and_execute(void)
         case FRAME_HEAD_MOTOR:
             switch (func)
             {
+            	case FUNC_MOTOR_CLOSE:
+            		for (int i = 0; i < MOTOR_NUM; i++)
+            		{
+						motor_enable(global_motor[i].id, false);
+						HAL_Delay(50);
+					}
+            		break;
+
+		        case FUNC_MOTOR_ENABLE: // 电机使能
+            		for (int i = 0; i < MOTOR_NUM; i++)
+            		{
+            			motor_enable(global_motor[i].id, true);
+            			HAL_Delay(50);
+            		}
+            		break;
+
+		        case FUNC_MOTOR_STOP: // 电机停止
+            		motor_stop_all();
+            		break;
+
                 case FUNC_MOTOR_SINGLE:
                     // 单电机控制: 地址 + 方向 + 距离 + 速度 + 加速度
                     if (data_len >= 8) {
@@ -210,17 +231,7 @@ static void pc_cmd_parse_and_execute(void)
                     }
                     break;
                     
-                case FUNC_MOTOR_ENABLE: // 电机使能
-                    for (int i = 0; i < MOTOR_NUM; i++)
-                    {
-                        motor_enable(global_motor[i].id);
-                    	HAL_Delay(100);
-                    }
-                    break;
-                    
-                case FUNC_MOTOR_STOP: // 电机停止
-                    motor_stop_all();
-                    break;  
+
                     
                 default:
                     break;
@@ -301,7 +312,8 @@ void pc_cmd_parser_feed_byte(uint8_t byte)
                     case FUNC_MOTOR_CUSTOM:
                         s_ctrlState = CMD_STATE_LEN;
                         break;
-                        
+
+					case FUNC_MOTOR_CLOSE:
                     case FUNC_MOTOR_ENABLE:
                     case FUNC_MOTOR_STOP:
                         s_ctrlLen = 0;

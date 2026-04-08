@@ -44,10 +44,10 @@ void motor_init()
 	printf("[MOTOR] 电机初始化完成，限制条件已启用\n");
 }
 // 单电机使能函数
-void motor_enable(uint8_t addr)
+void motor_enable(uint8_t addr,bool enable)
 {
 	// 更新电机状态，(电机使能状态 0x02)
-	ZDT_X42_V2_En_Control(addr, 1, 0);
+	ZDT_X42_V2_En_Control(addr, enable, 0);
 
 }
 

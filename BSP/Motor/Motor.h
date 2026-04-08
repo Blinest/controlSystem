@@ -122,7 +122,7 @@ typedef struct GlobalMotor
 
 void motor_init();
 void motor_run(int idx, float vel, float target, bool snf);
-void motor_enable(uint8_t addr);
+void motor_enable(uint8_t addr, bool enable);
 void motor_stop_all();
 void motor_single_control(uint8_t addr, uint8_t direction, float distance, float vel);
 void motor_sync_control(uint8_t count, uint8_t start_addr, float distance[]);
