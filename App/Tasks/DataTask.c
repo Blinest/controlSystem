@@ -44,11 +44,12 @@ void StartDataTask(void *argument)
         // ====================================
         // 1. 数据采集流: 从外设 (CAN 或 Usart RX) 接收并处理
         // ====================================
-        if (osMessageQueueGet(CmdDataQueueHandle, &rx_byte, NULL, 0) == osOK)
+       while (osMessageQueueGet(CmdDataQueueHandle, &rx_byte, NULL, 0) == osOK)
         {
             // 调用新的 Emm42 协议解析函数
         	emm42_parse_feed_byte(rx_byte);
         	sensor_data_parser_feed_byte(rx_byte);
+        	// Usart_SendString(&huart2, &rx_byte, 1);
         }
         
         // ====================================

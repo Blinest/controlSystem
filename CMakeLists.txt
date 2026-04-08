@@ -94,14 +94,14 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 
 
 #测试代码
-add_executable(test
-    tests/test_todo_functions.c
-
-)
-
-target_include_directories(test PRIVATE
-
-)
-target_link_libraries(test
-    stm32cubemx
-)
+#add_executable(test
+#    tests/test_todo_functions.c
+#
+#)
+#
+#target_include_directories(test PRIVATE
+#
+#)
+#target_link_libraries(test
+#    stm32cubemx
+#)

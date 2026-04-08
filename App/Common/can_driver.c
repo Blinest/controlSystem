@@ -4,7 +4,7 @@
 
 // CAN接收队列
 osMessageQueueId_t CAN_RxQueueHandle;
-
+CAN_TxHeaderTypeDef TxHeader;
 /**
  * @brief CAN驱动初始化
  */
@@ -40,40 +40,54 @@ void CAN_Driver_Init(void)
 	* @retval  无
 	*/
 
-void CAN_SendCmd(CAN_HandleTypeDef *hcan, uint32_t can_id, uint8_t *data, uint8_t len)
+void CAN_SendCmd(CAN_HandleTypeDef *hcan, uint8_t *cmd, uint8_t len)
 {
-	if (len == 0) return;
-	uint8_t offset = 0;
+	if (cmd == NULL || len < 2) return;  // 至少需要地址和功能码
+	uint8_t addr = cmd[0];          // 设备地址
+	uint8_t func = cmd[1];          // 功能码
+	uint8_t data_len = len - 2;     // 实际数据长度（不包含地址和功能码）
+	uint8_t *data = &cmd[2];        // 数据起始指针
+
 	CAN_TxHeaderTypeDef TxHeader;
-	uint32_t TxMailbox;
+	uint8_t max_data_per_packet = 7;
+	uint8_t packet_count = (data_len + max_data_per_packet - 1) / max_data_per_packet;
+	if (packet_count == 0) packet_count = 1;  // 即使没有数据，也要发送一包（仅功能码）
 
-	TxHeader.StdId = can_id;
-	TxHeader.IDE = CAN_ID_STD;
-	TxHeader.RTR = CAN_RTR_DATA;
-	TxHeader.TransmitGlobalTime = DISABLE;
+	uint8_t offset = 0;
+	uint8_t pack_idx = 0;
 
-	while (len > 0) {
-		uint8_t chunk_len = (len > 8) ? 8 : len;
-		TxHeader.DLC = chunk_len;
-		if (HAL_CAN_AddTxMessage(hcan, &TxHeader, data + offset, &TxMailbox) != HAL_OK) {
-			// 发送失败，可选择重试或退出
-			break;
+	for (pack_idx = 0; pack_idx < packet_count; pack_idx++)
+	{
+		// 计算本包需要发送的数据字节数（最多 7）
+		uint8_t send_data_len = (data_len - offset > max_data_per_packet) ?
+								max_data_per_packet : (data_len - offset);
+
+		// 构造 CAN 帧头
+		CAN_TxHeaderTypeDef TxHeader;
+		TxHeader.IDE = CAN_ID_EXT;          // 扩展帧
+		TxHeader.ExtId = ((uint32_t)addr << 8) | pack_idx;  // ID = (地址 << 8) | 包序号
+		TxHeader.RTR = CAN_RTR_DATA;
+		TxHeader.TransmitGlobalTime = DISABLE;
+		TxHeader.DLC = 1 + send_data_len;   // 第一字节功能码 + 数据字节数
+
+		// 准备数据场：第一个字节是功能码，后面紧跟数据
+		uint8_t tx_data[8];
+		tx_data[0] = func;
+		for (uint8_t i = 0; i < send_data_len; i++)
+		{
+			tx_data[1 + i] = data[offset + i];
 		}
-		// 增加超时机制，避免永久等待
-		uint32_t timeout = 1000; // 等待最大 1000 个循环
-		while (HAL_CAN_GetTxMailboxesFreeLevel(hcan) == 0 && timeout--) {
-			HAL_Delay(1);  // 让出 CPU，防止任务饿死
+
+		// 发送消息
+		uint32_t TxMailbox;
+		if (HAL_CAN_AddTxMessage(hcan, &TxHeader, tx_data, &TxMailbox) != HAL_OK)
+		{
+			return;   // 发送失败（例如邮箱满或参数错误）
 		}
-		if (timeout == 0) {
-			// 超时处理，例如清空邮箱或报错
-			break;
-		}
-		offset += chunk_len;
-		len -= chunk_len;
+		offset += send_data_len;   // 更新偏移量
 	}
 }
 
-uint8_t test[4] = "test";
 /**
 	* @brief   CAN1_RX0接收中断
 	* @param   无
@@ -83,12 +97,12 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
 	CAN_RxHeaderTypeDef RxHeader;
 	uint8_t rx_data[8];
-	// 接收一包数据
 	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, rx_data) == HAL_OK)
 	{
-		osMessageQueuePut(CmdDataQueueHandle, &rx_data, 0, 0);
-		//Usart_SendString(&huart2, test, 4);
-	};
+		uint8_t addr = (RxHeader.ExtId >> 8) & 0xFF;
+		uint8_t DATA_LEN = RxHeader.DLC;
+
+	}
 }
 
 /**

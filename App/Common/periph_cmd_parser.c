@@ -15,7 +15,7 @@
 #include "cmsis_os2.h"
 #include "string.h"
 #include "cmd_packer.h"
-
+#include "can_driver.h"
 
 // 引用外部队列
 extern osMessageQueueId_t SensorMessageQueueHandle;

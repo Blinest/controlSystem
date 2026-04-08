@@ -76,6 +76,7 @@ typedef enum {
     EMM42_ERR_UNKNOWN_FC = -2,
     EMM42_ERR_CHECKSUM   = -3,
     EMM42_ERR_LENGTH     = -4,
+	EMM42_ERR_ADDR		 = -5
 } emm42_result_t;
 
 

@@ -4,70 +4,71 @@
  */
 #include <stdio.h>
 #include "Emm42_command.h"
-
+#include "Common/can_driver.h"
 /* ================================================================
  *  解析: 收到的帧 → Motor
  *  自动区分命令帧(带magic)和回复帧(无magic)
  * ================================================================ */
 
-emm42_result_t emm42_parse(GlobalMotor *m, const uint8_t *buf, int len, bool verify_cs)
+/**
+ * CAN 通信专用的解析函数
+ * @param m         电机结构体指针
+ * @param can_ext_id CAN 扩展帧 ID（29位）
+ * @param buf        数据场缓冲区（不含地址，格式：功能码 + 数据 + 校验）
+ * @param len        数据场长度（字节数，包括功能码和校验）
+ * @param verify_cs  是否验证校验字节（建议 true）
+ * @return 解析结果
+ */
+emm42_result_t emm42_parse_can(GlobalMotor *m, uint32_t can_ext_id,
+                               const uint8_t *buf, int len, bool verify_cs)
 {
-    if (!m || !buf || len < 3) return EMM42_ERR_TOO_SHORT;
+    if (!m || !buf || len < 2) return EMM42_ERR_TOO_SHORT;  // 至少需要功能码+校验
+
+    // 1. 验证电机地址（从 CAN ID 高8位提取）
+    uint8_t recv_addr = (uint8_t)((can_ext_id >> 8) & 0xFF);
+    if (recv_addr != m->id && recv_addr != 0) {  // 0 为广播地址，可选处理
+        return EMM42_ERR_ADDR;
+    }
+
+    // 2. 校验（根据配置的校验方式，这里简化使用 0x6B 示例）
     if (verify_cs && buf[len - 1] != 0x6B) return EMM42_ERR_CHECKSUM;
 
-    uint8_t addr = buf[0];
-    uint8_t fc   = buf[1];
-    const uint8_t *p = &buf[2];
-    int n = verify_cs ? (len - 3) : (len - 2);
-
-    m->id = addr;
+    uint8_t fc = buf[0];                     // 功能码
+    int data_len = len - 2;                  // 数据长度 = 总长 - 功能码 - 校验
+    const uint8_t *data = &buf[1];           // 数据起始指针
 
     switch (fc) {
-
-    /* 回复帧: [addr F3 status cs] → n=1, 只更新状态
-     * 命令帧: [addr F3 AB en sync cs] → n=3 */
-    case EMM42_FC_MOTOR_ENABLE:
-        if (n >= 3) m->state = (p[1] != 0);
+    case EMM42_FC_MOTOR_ENABLE:              // 0xF3, 回复帧: [F3 status cs]
+        if (data_len >= 1) {
+            m->state = (data[0] == 0x02) ? 1 : 0;   // 0x02 表示使能成功
+        }
         break;
 
-    case EMM42_FC_SPEED_MODE:
-        if (n < 5) return EMM42_ERR_LENGTH;
-        m->target_vel = emm42_be16(&p[1]);
-        m->target_acc = p[3];
+    case EMM42_FC_READ_REALTIME_SPD:         // 0x35, 回复: [35 sign speed(2) cs]
+        if (data_len >= 3) {
+            m->current_vel = emm42_be16(&data[1]);
+        }
         break;
 
-    case EMM42_FC_POSITION_MODE:
-        if (n < 10) return EMM42_ERR_LENGTH;
-        m->target_vel = emm42_be16(&p[1]);
-        m->target_acc = p[3];
-        m->target_pos = (uint16_t)(emm42_be32(&p[4]) & 0xFFFF);
+    case EMM42_FC_READ_REALTIME_POS:         // 0x36, 回复: [36 sign pos(4) cs]
+    case EMM42_FC_READ_TARGET_POS:           // 0x33
+    case EMM42_FC_READ_REALTIME_TPOS:        // 0x34
+        if (data_len >= 5) {
+            int32_t raw = (int32_t)emm42_be32(&data[1]);
+            m->current_pos = (uint16_t)(raw & 0xFFFF);
+        }
         break;
 
-    case EMM42_FC_IMMEDIATE_STOP:
-    case EMM42_FC_SYNC_MOTION:
-    case EMM42_FC_SET_HOME:
-    case EMM42_FC_ABORT_HOMING:
-    case EMM42_FC_TRIGGER_CALIB:
-    case EMM42_FC_CLEAR_POSITION:
-    case EMM42_FC_RELEASE_STALL:
-    case EMM42_FC_FACTORY_RESET:
+    case EMM42_FC_READ_MOTOR_STATUS:         // 0x3A, 回复: [3A flags cs]
+        if (data_len >= 1) {
+            m->state = (data[0] & 0x01) != 0;
+        }
         break;
 
-    case EMM42_FC_TRIGGER_HOMING:
-        if (n >= 2) { /* cmd: [mode sync] */ }
-        break;
-
-    /* 回复: [addr 22 homing_params cs] → 长帧, 跳过
-     * 命令: [addr 22 cs] → n=0 (读取) */
-    case EMM42_FC_READ_HOMING_PARAM:
-    case EMM42_FC_WRITE_HOMING_PARAM:
-    case EMM42_FC_READ_HOMING_STATUS:
-        break;
-
-    /* 回复: [addr 1F fw hw cs] */
-    case EMM42_FC_READ_FW_VERSION:
-        break;
-
+    case EMM42_FC_READ_FW_VERSION:           // 0x1F
+    case EMM42_FC_READ_HOMING_PARAM:         // 0x22
+    case EMM42_FC_READ_DRV_CONFIG:           // 0x42
+    case EMM42_FC_READ_SYS_STATUS:           // 0x43
     case EMM42_FC_READ_PHASE_RL:
     case EMM42_FC_READ_POS_PID:
     case EMM42_FC_READ_BUS_VOLTAGE:
@@ -75,51 +76,22 @@ emm42_result_t emm42_parse(GlobalMotor *m, const uint8_t *buf, int len, bool ver
     case EMM42_FC_READ_ENCODER:
     case EMM42_FC_READ_INPUT_PULSES:
     case EMM42_FC_READ_POS_ERROR:
-    case EMM42_FC_READ_DRV_CONFIG:
-    case EMM42_FC_READ_SYS_STATUS:
+        // 这些回复帧较长，可根据需要解析，暂时忽略
         break;
 
-    /* 回复: [addr 33 sign pos(4) cs] → n=5
-     * 命令: [addr 33 cs] → n=0 */
-    case EMM42_FC_READ_TARGET_POS:
-    case EMM42_FC_READ_REALTIME_TPOS:
-    case EMM42_FC_READ_REALTIME_POS:
-        if (n >= 5) {
-            int32_t raw = (int32_t)emm42_be32(&p[1]);
-            m->current_pos = (uint16_t)(raw & 0xFFFF);
-        }
-        break;
-
-    /* 回复: [addr 35 sign speed(2) cs] → n=3
-     * 命令: [addr 35 cs] → n=0 */
-    case EMM42_FC_READ_REALTIME_SPD:
-        if (n >= 3) m->current_vel = emm42_be16(&p[1]);
-        break;
-
-    /* 回复: [addr 3A flags cs] → n=1
-     * 命令: [addr 3A cs] → n=0 */
-    case EMM42_FC_READ_MOTOR_STATUS:
-        if (n >= 1) m->state = (p[0] & 0x01) != 0;
-        break;
-
-    /* 回复: [addr 84 status cs] → n=1
-     * 命令: [addr 84 8A save val cs] → n=3 */
-    case EMM42_FC_WRITE_MICROSTEP:
-        if (n >= 3) m->stepper_motor.xifen = p[2];
-        break;
-
-    /* 回复: [addr AE status cs] → n=1
-     * 命令: [addr AE 4B save id cs] → n=3 */
-    case EMM42_FC_WRITE_ID_ADDR:
-        if (n >= 3) m->id = p[2];
-        break;
-
-    case EMM42_FC_WRITE_LOOP_MODE:
-    case EMM42_FC_WRITE_OPEN_CURRENT:
-    case EMM42_FC_WRITE_DRV_CONFIG:
-    case EMM42_FC_WRITE_POS_PID:
-    case EMM42_FC_STORE_SPEED_PARAM:
-    case EMM42_FC_WRITE_VEL_SCALE:
+    case EMM42_FC_WRITE_MICROSTEP:           // 0x84, 回复: [84 status cs]
+    case EMM42_FC_WRITE_ID_ADDR:             // 0xAE, 回复: [AE status cs]
+    case EMM42_FC_WRITE_LOOP_MODE:           // 0x46
+    case EMM42_FC_IMMEDIATE_STOP:            // 0xFE
+    case EMM42_FC_SYNC_MOTION:               // 0xFF
+    case EMM42_FC_SET_HOME:                  // 0x93
+    case EMM42_FC_TRIGGER_HOMING:            // 0x9A
+    case EMM42_FC_ABORT_HOMING:              // 0x9C
+    case EMM42_FC_TRIGGER_CALIB:             // 0x06
+    case EMM42_FC_CLEAR_POSITION:            // 0x0A
+    case EMM42_FC_RELEASE_STALL:             // 0x0E
+    case EMM42_FC_FACTORY_RESET:             // 0x0F
+        // 这些命令的回复通常只包含状态码，可忽略或记录
         break;
 
     default:
@@ -128,8 +100,6 @@ emm42_result_t emm42_parse(GlobalMotor *m, const uint8_t *buf, int len, bool ver
 
     return EMM42_OK;
 }
-
-
 /* ================================================================
  *  构建: Motor → 发送帧写入 Motor.cmd
  * ================================================================ */
@@ -258,70 +228,4 @@ emm42_result_t emm42_build(GlobalMotor *m, uint8_t fc)
 }
 
 
-const char* emm42_cmd_name(uint8_t fc) {
-    switch (fc) {
-        case EMM42_FC_MOTOR_ENABLE:       return "电机使能控制";
-        case EMM42_FC_SPEED_MODE:         return "速度模式控制";
-        case EMM42_FC_POSITION_MODE:      return "位置模式控制";
-        case EMM42_FC_IMMEDIATE_STOP:     return "立即停止";
-        case EMM42_FC_SYNC_MOTION:        return "多机同步运动";
-        case EMM42_FC_SET_HOME:           return "设置回零零点";
-        case EMM42_FC_TRIGGER_HOMING:     return "触发回零";
-        case EMM42_FC_ABORT_HOMING:       return "中断回零";
-        case EMM42_FC_READ_HOMING_PARAM:  return "读回零参数";
-        case EMM42_FC_WRITE_HOMING_PARAM: return "写回零参数";
-        case EMM42_FC_READ_HOMING_STATUS: return "读回零状态";
-        case EMM42_FC_TRIGGER_CALIB:      return "编码器校准";
-        case EMM42_FC_CLEAR_POSITION:     return "位置清零";
-        case EMM42_FC_RELEASE_STALL:      return "解除堵转";
-        case EMM42_FC_FACTORY_RESET:      return "恢复出厂";
-        case EMM42_FC_READ_FW_VERSION:    return "读固件版本";
-        case EMM42_FC_READ_PHASE_RL:      return "读相电阻电感";
-        case EMM42_FC_READ_POS_PID:       return "读位置环PID";
-        case EMM42_FC_READ_BUS_VOLTAGE:   return "读总线电压";
-        case EMM42_FC_READ_PHASE_CURRENT: return "读相电流";
-        case EMM42_FC_READ_ENCODER:       return "读编码器值";
-        case EMM42_FC_READ_INPUT_PULSES:  return "读输入脉冲";
-        case EMM42_FC_READ_TARGET_POS:    return "读目标位置";
-        case EMM42_FC_READ_REALTIME_TPOS: return "读实时目标";
-        case EMM42_FC_READ_REALTIME_SPD:  return "读实时转速";
-        case EMM42_FC_READ_REALTIME_POS:  return "读实时位置";
-        case EMM42_FC_READ_POS_ERROR:     return "读位置误差";
-        case EMM42_FC_READ_MOTOR_STATUS:  return "读电机状态";
-        case EMM42_FC_READ_DRV_CONFIG:    return "读驱动配置";
-        case EMM42_FC_READ_SYS_STATUS:    return "读系统状态";
-        case EMM42_FC_WRITE_MICROSTEP:    return "修改细分";
-        case EMM42_FC_WRITE_ID_ADDR:      return "修改地址";
-        case EMM42_FC_WRITE_LOOP_MODE:    return "切换开闭环";
-        case EMM42_FC_WRITE_OPEN_CURRENT: return "修改开环电流";
-        case EMM42_FC_WRITE_DRV_CONFIG:   return "修改驱动配置";
-        case EMM42_FC_WRITE_POS_PID:      return "修改位置环PID";
-        case EMM42_FC_STORE_SPEED_PARAM:  return "存储速度参数";
-        case EMM42_FC_WRITE_VEL_SCALE:    return "修改速度缩放";
-        default:                          return "未知";
-    }
-}
 
-static void hex(const uint8_t *d, int n) {
-    printf("  帧: ");
-    for (int i = 0; i < n; i++) printf("%02X ", d[i]);
-    printf("\n");
-}
-
-void demo_parse(const char *desc, GlobalMotor *m, const uint8_t *buf, int len) {
-    printf("\n── %s ──\n", desc);
-    hex(buf, len);
-
-    emm42_result_t ret = emm42_parse(m, buf, len, true);
-    if (ret != EMM42_OK) { printf("  ✗ 错误: %d\n", ret); return; }
-
-    printf("  ✓ %s → id=%d state=%s\n",
-           emm42_cmd_name(buf[1]), m->id, m->state ? "ON" : "OFF");
-}
-
-void demo_build(const char *desc, GlobalMotor *m, uint8_t fc) {
-    emm42_result_t ret = emm42_build(m, fc);
-    if (ret != EMM42_OK) { printf("  ✗ 构建失败: %d\n", ret); return; }
-    printf("\n── 构建: %s ──\n", desc);
-    hex(m->cmd, m->size);
-}

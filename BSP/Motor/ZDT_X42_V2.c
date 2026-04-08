@@ -12,7 +12,7 @@
 
 void can_SendCmd(uint8_t *cmd, uint8_t len)
 {
-	CAN_SendCmd(&hcan,0x00, cmd, len);
+	CAN_SendCmd(&hcan, cmd, len);
 }
 
 /**
