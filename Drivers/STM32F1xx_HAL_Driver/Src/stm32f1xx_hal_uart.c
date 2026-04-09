@@ -29,7 +29,7 @@
     The UART HAL driver can be used as follows:
 
     (#) Declare a UART_HandleTypeDef handle structure (eg. UART_HandleTypeDef huart).
-    (#) Initialize the UART low level resources by implementing the HAL_UART_MspInit() API:
+    (#) Initialize the UART low level Resources by implementing the HAL_UART_MspInit() API:
         (##) Enable the USARTx interface clock.
         (##) UART pins configuration:
             (+++) Enable the clock for the UART GPIOs.

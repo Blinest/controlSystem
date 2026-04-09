@@ -27,7 +27,7 @@
     The I2S HAL driver can be used as follow:
 
     (#) Declare a I2S_HandleTypeDef handle structure.
-    (#) Initialize the I2S low level resources by implement the HAL_I2S_MspInit() API:
+    (#) Initialize the I2S low level Resources by implement the HAL_I2S_MspInit() API:
         (##) Enable the SPIx interface clock.
         (##) I2S pins configuration:
             (+++) Enable the clock for the I2S GPIOs.
@@ -243,7 +243,7 @@ static HAL_StatusTypeDef  I2S_WaitFlagStateUntilTimeout(I2S_HandleTypeDef *hi2s,
           de-initialize the I2Sx peripheral in simplex mode:
 
       (+) User must Implement HAL_I2S_MspInit() function in which he configures
-          all related peripherals resources (CLOCK, GPIO, DMA, IT and NVIC ).
+          all related peripherals Resources (CLOCK, GPIO, DMA, IT and NVIC ).
 
       (+) Call the function HAL_I2S_Init() to configure the selected device with
           the selected configuration:

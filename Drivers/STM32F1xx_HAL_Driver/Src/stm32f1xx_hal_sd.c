@@ -27,18 +27,18 @@
   ==============================================================================
   [..]
     This driver implements a high level communication layer for read and write from/to
-    this memory. The needed STM32 hardware resources (SDIO and GPIO) are performed by
+    this memory. The needed STM32 hardware Resources (SDIO and GPIO) are performed by
     the user in HAL_SD_MspInit() function (MSP layer).
     Basically, the MSP layer configuration should be the same as we provide in the
     examples.
-    You can easily tailor this configuration according to hardware resources.
+    You can easily tailor this configuration according to hardware Resources.
 
   [..]
     This driver is a generic layered driver for SDIO memories which uses the HAL
     SDIO driver functions to interface with SD and uSD cards devices.
     It is used as follows:
 
-    (#)Initialize the SDIO low level resources by implementing the HAL_SD_MspInit() API:
+    (#)Initialize the SDIO low level Resources by implementing the HAL_SD_MspInit() API:
         (##) Enable the SDIO interface clock using __HAL_RCC_SDIO_CLK_ENABLE();
         (##) SDIO pins configuration for SD card
             (+++) Enable the clock for the SDIO GPIOs using the functions __HAL_RCC_GPIOx_CLK_ENABLE();

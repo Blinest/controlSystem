@@ -4,6 +4,8 @@
  */
 #include <stdio.h>
 #include "Emm42_command.h"
+
+#include "usart.h"
 #include "Common/can_driver.h"
 /* ================================================================
  *  解析: 收到的帧 → Motor
@@ -19,9 +21,9 @@
  * @param verify_cs  是否验证校验字节（建议 true）
  * @return 解析结果
  */
-;
+
 emm42_result_t emm42_parse_can(GlobalMotor *m, uint32_t can_ext_id,
-                               const uint8_t *buf, int len, bool verify_cs)
+                               const uint8_t *buf, uint32_t len, bool verify_cs)
 {
     if (!m || !buf || len < 2) return EMM42_ERR_TOO_SHORT;  // 至少需要功能码+校验
 
@@ -35,7 +37,7 @@ emm42_result_t emm42_parse_can(GlobalMotor *m, uint32_t can_ext_id,
     if (verify_cs && buf[len - 1] != 0x6B) return EMM42_ERR_CHECKSUM;
 
     uint8_t fc = buf[0];                     // 功能码
-    int data_len = len - 2;                  // 数据长度 = 总长 - 功能码 - 校验
+    uint32_t data_len = len - 2;                  // 数据长度 = 总长 - 功能码 - 校验
     const uint8_t *data = &buf[1];           // 数据起始指针
 
     switch (fc) {
@@ -47,11 +49,40 @@ emm42_result_t emm42_parse_can(GlobalMotor *m, uint32_t can_ext_id,
 
     case EMM42_FC_READ_REALTIME_SPD:         // 0x35, 回复: [35 sign speed(2) cs]
         if (data_len >= 3) {
-            m->current_vel = emm42_be16(&data[1]);
+        	uint8_t dir = data[0];
+        	const uint16_t raw = emm42_be16(&data[1]);
+        	// 经过了10倍放大，所以这里需要除 10
+            m->current_vel = dir == 0 ? (float)raw: -(float)raw;
+        	m->stepper_motor.current_vel = m->current_vel * (float)m->stepper_motor.daocheng / 60.0f;
+        	/** //调试用
+        	float val = m->current_vel;
+        	int int_part = (int)val;
+        	int frac_part = (int)((val - int_part) * 100 + 0.5);  // 保留两位小数，四舍五入
+        	if (frac_part < 0) frac_part = -frac_part;  // 小数部分取绝对值
+        	if (frac_part >= 100) {  // 处理进位，如 1.999 -> 2.00
+        		int_part += 1;
+        		frac_part -= 100;
+        	}
+
+        	char test[32];
+        	int len = snprintf(test, sizeof(test), "%d.%02d", int_part, frac_part);
+        	if (len > 0 && len < sizeof(test)) {
+        		Usart_SendString(&huart1, (uint8_t*)test, len);
+        	} else {
+        		Usart_SendString(&huart1, (uint8_t*)"ERR_FMT\r\n", 9);
+        	}
+        	*/
+
         }
         break;
 
     case EMM42_FC_READ_REALTIME_POS:         // 0x36, 回复: [36 sign pos(4) cs]
+    	if (data_len >= 5) {
+    		const uint32_t raw = emm42_be32(&data[1]);
+    		uint8_t dir = data[0];
+    		m->current_pos = dir == 0 ? (float)(360 * raw / 65536): -(float)(360 * raw / 65536);
+    		m->stepper_motor.current_pos = m->current_pos * m->stepper_motor.daocheng / 360.0f;
+    	}
     case EMM42_FC_READ_TARGET_POS:           // 0x33
     case EMM42_FC_READ_REALTIME_TPOS:        // 0x34
         if (data_len >= 5) {

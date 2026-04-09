@@ -10,10 +10,7 @@
 **********************************************************/
 
 
-void can_SendCmd(uint8_t *cmd, uint8_t len)
-{
-	CAN_SendCmd(&hcan, cmd, len);
-}
+
 
 /**
   * @brief    将当前位置清零

@@ -97,7 +97,7 @@ void arm_rfft_f32(
   /* Calculation of Real IFFT of input */
   if (S->ifftFlagR == 1U)
   {
-    /*  Real IFFT core process */
+    /*  Real IFFT Core process */
     arm_split_rifft_f32(pSrc, S->fftLenBy2, S->pTwiddleAReal,
                         S->pTwiddleBReal, pDst, S->twidCoefRModifier);
 
@@ -132,7 +132,7 @@ void arm_rfft_f32(
     }
 
 
-    /*  Real FFT core process */
+    /*  Real FFT Core process */
     arm_split_rfft_f32(pSrc, S->fftLenBy2, S->pTwiddleAReal,
                        S->pTwiddleBReal, pDst, S->twidCoefRModifier);
   }

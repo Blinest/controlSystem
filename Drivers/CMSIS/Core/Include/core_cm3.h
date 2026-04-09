@@ -45,7 +45,7 @@
      Function definitions in header files are used to allow 'inlining'.
 
    \li Required Rule 18.4, declaration of union type or object of union type: '{...}'.<br>
-     Unions are used for effective representation of core registers.
+     Unions are used for effective representation of Core registers.
 
    \li Advisory Rule 19.7, Function-like macro defined.<br>
      Function-like macros are used to allow more efficient code.
@@ -71,7 +71,7 @@
 #define __CORTEX_M                (3U)                                   /*!< Cortex-M Core */
 
 /** __FPU_USED indicates whether an FPU is used or not.
-    This core does not support an FPU at all
+    This Core does not support an FPU at all
 */
 #define __FPU_USED       0U
 
@@ -444,7 +444,7 @@ typedef struct
 #define SCB_ICSR_VECTACTIVE_Msk            (0x1FFUL /*<< SCB_ICSR_VECTACTIVE_Pos*/)       /*!< SCB ICSR: VECTACTIVE Mask */
 
 /* SCB Vector Table Offset Register Definitions */
-#if defined (__CM3_REV) && (__CM3_REV < 0x0201U)                   /* core r2p1 */
+#if defined (__CM3_REV) && (__CM3_REV < 0x0201U)                   /* Core r2p1 */
 #define SCB_VTOR_TBLBASE_Pos               29U                                            /*!< SCB VTOR: TBLBASE Position */
 #define SCB_VTOR_TBLBASE_Msk               (1UL << SCB_VTOR_TBLBASE_Pos)                  /*!< SCB VTOR: TBLBASE Mask */
 

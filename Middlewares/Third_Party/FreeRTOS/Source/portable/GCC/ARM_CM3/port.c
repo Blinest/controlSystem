@@ -42,15 +42,15 @@ FreeRTOS.org versions prior to V4.4.0 did not include this definition. */
 
 #ifndef configSYSTICK_CLOCK_HZ
 	#define configSYSTICK_CLOCK_HZ configCPU_CLOCK_HZ
-	/* Ensure the SysTick is clocked at the same frequency as the core. */
+	/* Ensure the SysTick is clocked at the same frequency as the Core. */
 	#define portNVIC_SYSTICK_CLK_BIT	( 1UL << 2UL )
 #else
 	/* The way the SysTick is clocked is not modified in case it is not the same
-	as the core. */
+	as the Core. */
 	#define portNVIC_SYSTICK_CLK_BIT	( 0 )
 #endif
 
-/* Constants required to manipulate the core.  Registers first... */
+/* Constants required to manipulate the Core.  Registers first... */
 #define portNVIC_SYSTICK_CTRL_REG			( * ( ( volatile uint32_t * ) 0xe000e010 ) )
 #define portNVIC_SYSTICK_LOAD_REG			( * ( ( volatile uint32_t * ) 0xe000e014 ) )
 #define portNVIC_SYSTICK_CURRENT_VALUE_REG	( * ( ( volatile uint32_t * ) 0xe000e018 ) )

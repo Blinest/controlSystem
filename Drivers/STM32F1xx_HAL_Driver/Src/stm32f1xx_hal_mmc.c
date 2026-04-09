@@ -27,18 +27,18 @@
   ==============================================================================
   [..]
     This driver implements a high level communication layer for read and write from/to
-    this memory. The needed STM32 hardware resources (SDMMC and GPIO) are performed by
+    this memory. The needed STM32 hardware Resources (SDMMC and GPIO) are performed by
     the user in HAL_MMC_MspInit() function (MSP layer).
     Basically, the MSP layer configuration should be the same as we provide in the
     examples.
-    You can easily tailor this configuration according to hardware resources.
+    You can easily tailor this configuration according to hardware Resources.
 
   [..]
     This driver is a generic layered driver for SDMMC memories which uses the HAL
     SDMMC driver functions to interface with MMC and eMMC cards devices.
     It is used as follows:
 
-    (#)Initialize the SDMMC low level resources by implement the HAL_MMC_MspInit() API:
+    (#)Initialize the SDMMC low level Resources by implement the HAL_MMC_MspInit() API:
         (##) Enable the SDMMC interface clock using __HAL_RCC_SDMMC_CLK_ENABLE();
         (##) SDMMC pins configuration for MMC card
             (+++) Enable the clock for the SDMMC GPIOs using the functions __HAL_RCC_GPIOx_CLK_ENABLE();

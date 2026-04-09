@@ -1198,8 +1198,8 @@ void vTaskStartScheduler( void ) PRIVILEGED_FUNCTION;
  * portable layer (see vPortEndScheduler () in port. c for the PC port).  This
  * performs hardware specific operations such as stopping the kernel tick.
  *
- * vTaskEndScheduler () will cause all of the resources allocated by the
- * kernel to be freed - but will not free resources allocated by application
+ * vTaskEndScheduler () will cause all of the Resources allocated by the
+ * kernel to be freed - but will not free Resources allocated by application
  * tasks.
  *
  * Example usage:

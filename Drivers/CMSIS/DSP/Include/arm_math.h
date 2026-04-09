@@ -76,7 +76,7 @@
    * Define the appropriate preprocessor macro ARM_MATH_CM7 or ARM_MATH_CM4 or ARM_MATH_CM3 or
    * ARM_MATH_CM0 or ARM_MATH_CM0PLUS depending on the target processor in the application.
    * For Armv8-M cores define preprocessor macro ARM_MATH_ARMV8MBL or ARM_MATH_ARMV8MML.
-   * Set preprocessor macro __DSP_PRESENT if Armv8-M Mainline core supports DSP instructions.
+   * Set preprocessor macro __DSP_PRESENT if Armv8-M Mainline Core supports DSP instructions.
    * 
    *
    * Examples
@@ -137,7 +137,7 @@
    *
    * - __DSP_PRESENT:
    *
-   * Initialize macro __DSP_PRESENT = 1 when Armv8-M Mainline core supports DSP instructions.
+   * Initialize macro __DSP_PRESENT = 1 when Armv8-M Mainline Core supports DSP instructions.
    *
    * <hr>
    * CMSIS-DSP in ARM::CMSIS Pack
@@ -338,7 +338,7 @@
     #define ARM_MATH_DSP
   #endif
 #else
-  #error "Define according the used Cortex core ARM_MATH_CM7, ARM_MATH_CM4, ARM_MATH_CM3, ARM_MATH_CM0PLUS, ARM_MATH_CM0, ARM_MATH_ARMV8MBL, ARM_MATH_ARMV8MML"
+  #error "Define according the used Cortex Core ARM_MATH_CM7, ARM_MATH_CM4, ARM_MATH_CM3, ARM_MATH_CM0PLUS, ARM_MATH_CM0, ARM_MATH_ARMV8MBL, ARM_MATH_ARMV8MML"
 #endif
 
 #undef  __CMSIS_GENERIC         /* enable NVIC and Systick functions */

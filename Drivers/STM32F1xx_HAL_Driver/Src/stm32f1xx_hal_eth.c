@@ -33,7 +33,7 @@
 
       (#)Call HAL_ETH_Init() API to initialize the Ethernet peripheral (MAC, DMA, ...)
 
-      (#)Initialize the ETH low level resources through the HAL_ETH_MspInit() API:
+      (#)Initialize the ETH low level Resources through the HAL_ETH_MspInit() API:
           (##) Enable the Ethernet interface clock using
                (+++) __HAL_RCC_ETHMAC_CLK_ENABLE();
                (+++) __HAL_RCC_ETHMACTX_CLK_ENABLE();

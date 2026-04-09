@@ -16,6 +16,7 @@
 #include "Common/cmd_parse_unified.h"
 #include "Motor/Motor.h"
 #include "stdio.h"
+#include "usart.h"
 #include "Sensor/Sensor.h"
 #define RX_BUF_SIZE 256
 
@@ -39,20 +40,27 @@ void StartCmdCtrlTask(void *argument)
         // 电机使能放在循环开始，确保每次循环都执行
         
 	    // 从队列接收上位机指令
-	    // 改为非阻塞轮询模式，避免阻塞导致 motor_enable(1) 只执行一次
 	    if (osMessageQueueGet(CmdCtrlQueueHandle, &receive, NULL, 0) == osOK) {
 	        // 优先回显，提高响应性
-
 	        if (rx_len < RX_BUF_SIZE) {
 	            rx_buffer[rx_len++] = receive;
 	        	// 进入指令解析函数，指令解析函数负责指令解析，而后再将解析好的指令传给电机进行解析
-
 	        	cmd_parse_feed_byte(receive);
 	        } else {
                 rx_len = 0; // 缓冲区溢出重置
             }
 	    }
-        
+    	static uint32_t last_send_time = 0;
+    	uint32_t current_time = osKernelGetTickCount();
+
+    	// 每100ms读取一次位置信息
+    	if ((current_time - last_send_time) >= 500)
+    	{
+    		// 电机状态检测 (使用 static 以节省堆栈空间)
+    		motor_status_check();
+
+    		last_send_time = current_time;
+    	}
         // 添加小延时，避免过度占用CPU
 		osDelay(100);
 	  }

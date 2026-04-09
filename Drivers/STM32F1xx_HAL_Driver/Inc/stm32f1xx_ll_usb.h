@@ -93,12 +93,12 @@ typedef enum
 typedef struct
 {
   uint8_t dev_endpoints;            /*!< Device Endpoints number.
-                                         This parameter depends on the used USB core.
+                                         This parameter depends on the used USB Core.
                                          This parameter must be a number between Min_Data = 1 and Max_Data = 15 */
 
 #if defined (USB_OTG_FS)
   uint8_t Host_channels;            /*!< Host Channels number.
-                                         This parameter Depends on the used USB core.
+                                         This parameter Depends on the used USB Core.
                                          This parameter must be a number between Min_Data = 1 and Max_Data = 15 */
 #endif /* defined (USB_OTG_FS) */
 

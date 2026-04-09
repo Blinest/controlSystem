@@ -224,27 +224,6 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 
 /* USER CODE BEGIN 1 */
 
-/**
-  * @brief  Retargets the C library printf function to the USART.
-  * @param  ch: character to send
-  * @retval ch
-  */
-int __io_putchar(int ch)
-{
-  /* 如果串口 1 处于错误状态，尝试重置 */
-  if (huart1.gState == HAL_UART_STATE_ERROR) {
-      huart1.gState = HAL_UART_STATE_READY;
-      huart1.ErrorCode = HAL_UART_ERROR_NONE;
-  }
-  
-  HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, 10);
-  return ch;
-}
-
-int fputc(int ch, FILE *f)
-{
-  return __io_putchar(ch);
-}
 
 void Usart_SendString(UART_HandleTypeDef *huart, uint8_t *str, uint16_t len)
 {
@@ -256,8 +235,8 @@ void Usart_SendString(UART_HandleTypeDef *huart, uint8_t *str, uint16_t len)
 
   // 根据数据长度计算合理的超时时间
   // 9600波特率下，每字节约1.04ms，加上一些余量
-  // 计算公式：超时时间(ms) = (字节数 * 1.5ms) + 20ms（固定余量）
-  uint32_t timeout = (len * 15) / 10 + 20;  // 转换为ms
+  // 计算公式：超时时间(ms) = (字节数 * 1.5ms) + 40ms（固定余量）
+  uint32_t timeout = (len * 15) / 10 + 40;  // 转换为ms
   HAL_UART_Transmit(huart, str, len, timeout);
 }
 

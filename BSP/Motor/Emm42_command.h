@@ -91,7 +91,7 @@ static inline uint32_t emm42_be32(const uint8_t *p) {
            ((uint32_t)p[2] << 8) | p[3];
 }
 
-emm42_result_t emm42_parse_can(GlobalMotor *m, uint32_t can_ext_id,const uint8_t *buf, int len, bool verify_cs);
+emm42_result_t emm42_parse_can(GlobalMotor *m, uint32_t can_ext_id,const uint8_t *buf, uint32_t len, bool verify_cs);
 emm42_result_t emm42_build(GlobalMotor *m, uint8_t fc);
 const char* emm42_cmd_name(uint8_t fc);
 void demo_parse(const char *desc, GlobalMotor *m, const uint8_t *buf, int len);

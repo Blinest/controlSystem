@@ -31,9 +31,9 @@
 
     (#)Fill parameters of Init structure in HCD handle
 
-    (#)Call HAL_HCD_Init() API to initialize the HCD peripheral (Core, Host core, ...)
+    (#)Call HAL_HCD_Init() API to initialize the HCD peripheral (Core, Host Core, ...)
 
-    (#)Initialize the HCD low level resources through the HAL_HCD_MspInit() API:
+    (#)Initialize the HCD low level Resources through the HAL_HCD_MspInit() API:
         (##) Enable the HCD/USB Low Level interface clock using the following macros
              (+++) __HAL_RCC_USB_OTG_FS_CLK_ENABLE();
         (##) Initialize the related GPIO clocks

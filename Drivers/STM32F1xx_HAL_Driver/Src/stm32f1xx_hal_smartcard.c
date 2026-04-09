@@ -29,7 +29,7 @@
       The SMARTCARD HAL driver can be used as follows:
 
     (#) Declare a SMARTCARD_HandleTypeDef handle structure.
-    (#) Initialize the SMARTCARD low level resources by implementing the HAL_SMARTCARD_MspInit() API:
+    (#) Initialize the SMARTCARD low level Resources by implementing the HAL_SMARTCARD_MspInit() API:
         (##) Enable the interface clock of the USARTx associated to the SMARTCARD.
         (##) SMARTCARD pins configuration:
             (+++) Enable the clock for the SMARTCARD GPIOs.

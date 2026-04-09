@@ -32,7 +32,7 @@
  * task or interrupt to another, message buffers are used to send variable
  * length discrete messages from one task or interrupt to another.  Their
  * implementation is light weight, making them particularly suited for interrupt
- * to task and core to core communication scenarios.
+ * to task and Core to Core communication scenarios.
  *
  * ***NOTE***:  Uniquely among FreeRTOS objects, the stream buffer
  * implementation (so also the message buffer implementation, as message buffers

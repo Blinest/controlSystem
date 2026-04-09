@@ -60,7 +60,7 @@
             ##### How to use this driver #####
   ==============================================================================
     [..]
-     (#) Initialize the TIM low level resources by implementing the following functions
+     (#) Initialize the TIM low level Resources by implementing the following functions
          depending on the selected feature:
            (++) Time Base : HAL_TIM_Base_MspInit()
            (++) Input Capture : HAL_TIM_IC_MspInit()
@@ -69,7 +69,7 @@
            (++) One-pulse mode output : HAL_TIM_OnePulse_MspInit()
            (++) Encoder mode output : HAL_TIM_Encoder_MspInit()
 
-     (#) Initialize the TIM low level resources :
+     (#) Initialize the TIM low level Resources :
         (##) Enable the TIM interface clock using __HAL_RCC_TIMx_CLK_ENABLE();
         (##) TIM pins configuration
             (+++) Enable the clock for the TIM GPIOs using the following function:

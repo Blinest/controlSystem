@@ -80,8 +80,8 @@ typedef struct MotorFeedback {
 typedef struct
 {
 	uint8_t daocheng;
-	uint8_t xifen;
-	double step_angle;
+	uint16_t xifen;
+	float step_angle;
 	float current_pos; // mm
 	float target_pos; // mm
 	float current_vel; // mm/s
@@ -93,7 +93,7 @@ typedef struct ServoMotor
 {
 	uint8_t daocheng;
 	uint8_t xifen;
-	double step_angle;
+	float step_angle;
 	float current_pos; // mm
 	float target_pos; // mm
 	float current_vel; // mm/s
@@ -121,10 +121,10 @@ typedef struct GlobalMotor
 } GlobalMotor;
 
 void motor_init();
-void motor_run(int idx, float vel, float target, bool snf);
+void motor_run(int idx, float vel, float target, uint8_t snf);
 void motor_enable(uint8_t addr, bool enable);
 void motor_stop_all();
-void motor_single_control(uint8_t addr, uint8_t direction, float distance, float vel);
+void motor_single_control(uint8_t idx, uint8_t direction, float distance, float vel);
 void motor_sync_control(uint8_t count, uint8_t start_addr, float distance[]);
 
 typedef void (*Kinematic)(uint8_t R, float theta, float phi, float deltaL[]);

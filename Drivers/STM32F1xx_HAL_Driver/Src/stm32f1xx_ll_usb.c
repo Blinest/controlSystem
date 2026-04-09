@@ -203,7 +203,7 @@ HAL_StatusTypeDef USB_DisableGlobalInt(USB_OTG_GlobalTypeDef *USBx)
 /**
   * @brief  USB_SetCurrentMode Set functional mode
   * @param  USBx  Selected device
-  * @param  mode  current core mode
+  * @param  mode  current Core mode
   *          This parameter can be one of these values:
   *            @arg USB_DEVICE_MODE Peripheral mode
   *            @arg USB_HOST_MODE Host mode
@@ -1183,9 +1183,9 @@ void  USB_ClearInterrupts(USB_OTG_GlobalTypeDef *USBx, uint32_t interrupt)
 }
 
 /**
-  * @brief  Returns USB core mode
+  * @brief  Returns USB Core mode
   * @param  USBx  Selected device
-  * @retval return core mode : Host or Device
+  * @retval return Core mode : Host or Device
   *          This parameter can be one of these values:
   *           0 : Host
   *           1 : Device
@@ -1728,7 +1728,7 @@ HAL_StatusTypeDef USB_HC_Halt(const USB_OTG_GlobalTypeDef *USBx, uint8_t hc_num)
   uint32_t SplitEna = (USBx_HC(hcnum)->HCSPLT & USB_OTG_HCSPLT_SPLITEN) >> 31;
 
   /* In buffer DMA, Channel disable must not be programmed for non-split periodic channels.
-     At the end of the next uframe/frame (in the worst case), the core generates a channel halted
+     At the end of the next uframe/frame (in the worst case), the Core generates a channel halted
      and disables the channel automatically. */
 
   if ((((USBx->GAHBCFG & USB_OTG_GAHBCFG_DMAEN) == USB_OTG_GAHBCFG_DMAEN) && (SplitEna == 0U)) &&
@@ -1992,7 +1992,7 @@ HAL_StatusTypeDef USB_DisableGlobalInt(USB_TypeDef *USBx)
 /**
   * @brief  USB_SetCurrentMode Set functional mode
   * @param  USBx Selected device
-  * @param  mode current core mode
+  * @param  mode current Core mode
   *          This parameter can be one of the these values:
   *            @arg USB_DEVICE_MODE Peripheral mode
   * @retval HAL status

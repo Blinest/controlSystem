@@ -30,7 +30,7 @@
     (#) Declare a I2C_HandleTypeDef handle structure, for example:
         I2C_HandleTypeDef  hi2c;
 
-    (#)Initialize the I2C low level resources by implementing the HAL_I2C_MspInit() API:
+    (#)Initialize the I2C low level Resources by implementing the HAL_I2C_MspInit() API:
         (##) Enable the I2Cx interface clock
         (##) I2C pins configuration
             (+++) Enable the clock for the I2C GPIOs
@@ -433,7 +433,7 @@ static void I2C_Flush_DR(I2C_HandleTypeDef *hi2c);
           deinitialize the I2Cx peripheral:
 
       (+) User must Implement HAL_I2C_MspInit() function in which he configures
-          all related peripherals resources (CLOCK, GPIO, DMA, IT and NVIC).
+          all related peripherals Resources (CLOCK, GPIO, DMA, IT and NVIC).
 
       (+) Call the function HAL_I2C_Init() to configure the selected device with
           the selected configuration:

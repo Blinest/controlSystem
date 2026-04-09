@@ -29,7 +29,7 @@
     The IRDA HAL driver can be used as follows:
 
     (#) Declare a IRDA_HandleTypeDef handle structure (eg. IRDA_HandleTypeDef hirda).
-    (#) Initialize the IRDA low level resources by implementing the HAL_IRDA_MspInit() API:
+    (#) Initialize the IRDA low level Resources by implementing the HAL_IRDA_MspInit() API:
         (##) Enable the USARTx interface clock.
         (##) IRDA pins configuration:
             (+++) Enable the clock for the IRDA GPIOs.

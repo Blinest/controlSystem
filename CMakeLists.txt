@@ -38,9 +38,10 @@ add_executable(${CMAKE_PROJECT_NAME}
     BSP/Motor/motor_limits.c
     App/Common/can_driver.c
     App/Common/can_driver.h
-    BSP/Motor/Emm_V5.c
     BSP/Motor/ZDT_X42_V2.c
     BSP/Motor/ZDT_X42_V2.h
+    BSP/Motor/Emm_V5.c
+    BSP/Motor/Emm_V5.h
 )
 
 # Add STM32CubeMX generated sources

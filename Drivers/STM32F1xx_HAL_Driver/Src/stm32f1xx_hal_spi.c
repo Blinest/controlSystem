@@ -30,7 +30,7 @@
       (#) Declare a SPI_HandleTypeDef handle structure, for example:
           SPI_HandleTypeDef  hspi;
 
-      (#)Initialize the SPI low level resources by implementing the HAL_SPI_MspInit() API:
+      (#)Initialize the SPI low level Resources by implementing the HAL_SPI_MspInit() API:
           (##) Enable the SPIx interface clock
           (##) SPI pins configuration
               (+++) Enable the clock for the SPI GPIOs
@@ -303,7 +303,7 @@ static HAL_StatusTypeDef SPI_EndRxTxTransaction(SPI_HandleTypeDef *hspi, uint32_
           de-initialize the SPIx peripheral:
 
       (+) User must implement HAL_SPI_MspInit() function in which he configures
-          all related peripherals resources (CLOCK, GPIO, DMA, IT and NVIC ).
+          all related peripherals Resources (CLOCK, GPIO, DMA, IT and NVIC ).
 
       (+) Call the function HAL_SPI_Init() to configure the selected device with
           the selected configuration:

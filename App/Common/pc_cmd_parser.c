@@ -5,8 +5,12 @@
  * 负责解析上位机发送的指令，更新全局结构体，并分发给下位机
  * 
  * @date 2026-03-30
- * @author Psyduck
+ * @author blin
  */
+
+// 引入 freertos
+#include "FreeRTOS.h"
+#include "task.h"
 
 #include "pc_cmd_parser.h"
 #include "Motor/Motor.h"
@@ -98,15 +102,18 @@ static void pc_cmd_parse_and_execute(void)
             		for (int i = 0; i < MOTOR_NUM; i++)
             		{
 						motor_enable(global_motor[i].id, false);
-						HAL_Delay(50);
+            			//vTaskDelay(pdMS_TO_TICKS(10));
+            			HAL_Delay(1);
 					}
+
             		break;
 
 		        case FUNC_MOTOR_ENABLE: // 电机使能
             		for (int i = 0; i < MOTOR_NUM; i++)
             		{
             			motor_enable(global_motor[i].id, true);
-            			HAL_Delay(50);
+            			//vTaskDelay(pdMS_TO_TICKS(10));
+            			HAL_Delay(1);
             		}
             		break;
 
@@ -115,14 +122,16 @@ static void pc_cmd_parse_and_execute(void)
             		break;
 
                 case FUNC_MOTOR_SINGLE:
-                    // 单电机控制: 地址 + 方向 + 距离 + 速度 + 加速度
+            		//Usart_SendString(&huart1, (uint8_t*)"test", 4);
+                    // 单电机控制: 地址 + 方向 + 距离 + 速度 + 加速度 (1 + 2 + 2 + 2)
                     if (data_len >= 8) {
+
                         uint8_t addr = s_ctrlBuf[3];      // 电机地址
-                        uint8_t direction = s_ctrlBuf[4]; // 方向 (0:负方向, 1:正方向)
+                        uint8_t direction = s_ctrlBuf[4]; // 方向 (1:负方向, 0:正方向)
                         uint16_t distance = (s_ctrlBuf[5] << 8) | s_ctrlBuf[6]; // 距离
                         uint16_t vel = (s_ctrlBuf[7] << 8) | s_ctrlBuf[8]; // 速度
                     	uint16_t acc = (s_ctrlBuf[9] << 8) | s_ctrlBuf[10]; // 加速度
-                        // 调用单电机控制函数
+						// 调用单电机控制函数
                         motor_single_control(addr - 1, direction, (float)distance / 100.0f, (float)vel / 100.0f);
                     }
                     break;
@@ -300,51 +309,7 @@ void pc_cmd_parser_feed_byte(uint8_t byte)
             /* 保存功能码 */
             s_ctrlBuf[1] = receive;
             s_ctrlLen = 2;
-            
-            if (s_ctrlBuf[0] == FRAME_HEAD_MOTOR)
-            {
-                // 根据功能码执行特定动作
-                switch ((MotorFuncCode_t)receive)
-                {
-                    case FUNC_MOTOR_SINGLE:
-                    case FUNC_MOTOR_KINEMATIC:
-					case FUNC_MOTOR_SYNC:
-                    case FUNC_MOTOR_CUSTOM:
-                        s_ctrlState = CMD_STATE_LEN;
-                        break;
-
-					case FUNC_MOTOR_CLOSE:
-                    case FUNC_MOTOR_ENABLE:
-                    case FUNC_MOTOR_STOP:
-                        s_ctrlLen = 0;
-                        // 进入指令解析执行函数
-                        pc_cmd_parse_and_execute();
-                        pc_cmd_parser_reset();
-                        break;
-                        
-                    default:
-                        pc_cmd_parser_reset();
-                        break;
-                }
-            }
-            else if (s_ctrlBuf[0] == FRAME_HEAD_SENSOR)
-            {
-                switch ((SensorFuncCode_t)receive)
-                {
-                    case FUNC_SENSOR_INIT:
-                        pc_cmd_parse_and_execute();
-                        pc_cmd_parser_reset();
-                        break;
-                        
-                    case FUNC_SENSOR_SELF_TEST:
-                        s_ctrlState = CMD_STATE_LEN;
-                        break;
-                        
-                    default:
-                        pc_cmd_parser_reset();
-                        break;
-                }
-            }
+    		s_ctrlState = CMD_STATE_LEN;
             break;
             
         case CMD_STATE_LEN:
@@ -381,7 +346,6 @@ void pc_cmd_parser_feed_byte(uint8_t byte)
                 is_connected = true; // 收到暗号，解锁连接
                 pc_cmd_parse_and_execute();
             }
-            
             pc_cmd_parser_reset();
             break;
             

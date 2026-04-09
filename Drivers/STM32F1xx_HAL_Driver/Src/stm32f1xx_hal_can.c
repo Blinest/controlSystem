@@ -28,7 +28,7 @@
                         ##### How to use this driver #####
   ==============================================================================
     [..]
-      (#) Initialize the CAN low level resources by implementing the
+      (#) Initialize the CAN low level Resources by implementing the
           HAL_CAN_MspInit():
          (++) Enable the CAN interface clock using __HAL_RCC_CANx_CLK_ENABLE()
          (++) Configure CAN pins

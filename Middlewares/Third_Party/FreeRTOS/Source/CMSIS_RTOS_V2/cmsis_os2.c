@@ -2054,7 +2054,7 @@ osMemoryPoolId_t osMemoryPoolNew (uint32_t block_count, uint32_t block_size, con
       }
     }
     else {
-      /* Memory pool cannot be created, release allocated resources */
+      /* Memory pool cannot be created, release allocated Resources */
       if ((mem_cb == 0) && (mp != NULL)) {
         /* Free control block memory */
         vPortFree (mp);

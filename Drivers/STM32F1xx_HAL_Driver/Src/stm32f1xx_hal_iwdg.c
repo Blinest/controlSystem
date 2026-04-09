@@ -44,7 +44,7 @@
         IWDGRST flag in RCC_CSR register can be used to inform when an IWDG
         reset occurs.
 
-    (+) Debug mode: When the microcontroller enters debug mode (core halted),
+    (+) Debug mode: When the microcontroller enters debug mode (Core halted),
         the IWDG counter either continues to work normally or stops, depending
         on DBG_IWDG_STOP configuration bit in DBG module, accessible through
         __HAL_DBGMCU_FREEZE_IWDG() and __HAL_DBGMCU_UNFREEZE_IWDG() macros.

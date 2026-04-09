@@ -12,12 +12,12 @@
   *                      before branch to main program. This call is made inside
   *                      the "startup_stm32f1xx_xx.s" file.
   *
-  *      - SystemCoreClock variable: Contains the core clock (HCLK), it can be used
+  *      - SystemCoreClock variable: Contains the Core clock (HCLK), it can be used
   *                                  by the user application to setup the SysTick 
   *                                  timer or configure other parameters.
   *                                     
   *      - SystemCoreClockUpdate(): Updates the variable SystemCoreClock and must
-  *                                 be called whenever the core clock is changed
+  *                                 be called whenever the Core clock is changed
   *                                 during program execution.
   *
   * 2. After each device reset the HSI (8 MHz) is used as system clock source.
@@ -188,11 +188,11 @@ void SystemInit (void)
 
 /**
   * @brief  Update SystemCoreClock variable according to Clock Register Values.
-  *         The SystemCoreClock variable contains the core clock (HCLK), it can
+  *         The SystemCoreClock variable contains the Core clock (HCLK), it can
   *         be used by the user application to setup the SysTick timer or configure
   *         other parameters.
   *           
-  * @note   Each time the core clock (HCLK) changes, this function must be called
+  * @note   Each time the Core clock (HCLK) changes, this function must be called
   *         to update SystemCoreClock variable value. Otherwise, any configuration
   *         based on this variable will be incorrect.         
   *     
