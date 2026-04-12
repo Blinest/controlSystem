@@ -53,12 +53,11 @@ void StartCmdCtrlTask(void *argument)
     	static uint32_t last_send_time = 0;
     	uint32_t current_time = osKernelGetTickCount();
 
-    	// 每100ms读取一次位置信息
-    	if ((current_time - last_send_time) >= 500)
+    	// 每500ms读取一次位置信息
+    	if ((current_time - last_send_time) >= 1000)
     	{
-    		// 电机状态检测 (使用 static 以节省堆栈空间)
-    		motor_status_check();
-
+    		// 电机状态检测 (使用 static 以节省堆栈空间)，心跳检测
+    		// motor_status_check();
     		last_send_time = current_time;
     	}
         // 添加小延时，避免过度占用CPU

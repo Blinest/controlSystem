@@ -125,13 +125,12 @@ void motor_run(int idx, float vel, float target, uint8_t snf);
 void motor_enable(uint8_t addr, bool enable);
 void motor_stop_all();
 void motor_single_control(uint8_t idx, uint8_t direction, float distance, float vel);
-void motor_sync_control(uint8_t count, uint8_t start_addr, float distance[]);
+void motor_sync_control(uint8_t count, uint8_t start_idx, float distance[]);
 
 typedef void (*Kinematic)(uint8_t R, float theta, float phi, float deltaL[]);
 void motor_kinematic_control(Kinematic kinematic, uint8_t R, float theta, float phi, float deltaL[]);
 void motor_custom_control(uint8_t count, uint8_t *params);
-void motor_bend_control(uint8_t direction, float angle);
-void motor_scale_control(uint8_t dit, float scale);
+
 void motor_full_control(uint8_t addr, uint8_t dir, float dist, float velocity, float acceleration);
 
 // 新增函数 - 添加于2026-03-27 by Psyduck

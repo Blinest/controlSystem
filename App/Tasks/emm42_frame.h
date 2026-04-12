@@ -1,5 +1,5 @@
 /**
- * EmM42_V5.0 帧打包/解包库
+ * X_V2 帧打包/解包库
  *
  * 帧格式:
  *   [0xBB] [功能码] [长度] [MOTOR_NUM] [SENSOR_NUM]
@@ -12,8 +12,8 @@
  * 传感器 X/Y/Z = 传感器数值
  */
 
-#ifndef EMM42_FRAME_H
-#define EMM42_FRAME_H
+#ifndef X_V2_FRAME_H
+#define X_V2_FRAME_H
 
 #include <stdint.h>
 #include <string.h>

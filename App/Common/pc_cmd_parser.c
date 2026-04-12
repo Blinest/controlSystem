@@ -112,7 +112,6 @@ static void pc_cmd_parse_and_execute(void)
             		for (int i = 0; i < MOTOR_NUM; i++)
             		{
             			motor_enable(global_motor[i].id, true);
-            			//vTaskDelay(pdMS_TO_TICKS(10));
             			HAL_Delay(1);
             		}
             		break;
@@ -122,7 +121,6 @@ static void pc_cmd_parse_and_execute(void)
             		break;
 
                 case FUNC_MOTOR_SINGLE:
-            		//Usart_SendString(&huart1, (uint8_t*)"test", 4);
                     // 单电机控制: 地址 + 方向 + 距离 + 速度 + 加速度 (1 + 2 + 2 + 2)
                     if (data_len >= 8) {
 
@@ -150,7 +148,7 @@ static void pc_cmd_parse_and_execute(void)
 	                        distances[i] =(float)((s_ctrlBuf[5 + i*2] << 8) | s_ctrlBuf[6 + i*2]);
 	                        if (distances[i] != 0) temp++;
 						}
-						temp == 0 ? autostraight() : motor_sync_control(count, start_idx, distances);
+						temp == 0 ? auto_straight() : motor_sync_control(count, start_idx, distances);
                     }
                     break;
                     
@@ -162,17 +160,13 @@ static void pc_cmd_parse_and_execute(void)
                         float theta = (float)((int16_t)((s_ctrlBuf[4] << 8) | s_ctrlBuf[5])) / 100.0f; // 角度θ
                         float phi = (float)((int16_t)((s_ctrlBuf[6] << 8) | s_ctrlBuf[7])) / 100.0f;   // 角度φ
                         
-                        printf("[CMD] 运动学控制: R=%d, theta=%.2f, phi=%.2f\n", R, theta, phi);
+
                         
                         // 计算肌腱长度变化
                         float deltaL[4] = {0};
                     	// 调用运动学模型并执行控制指令
                     	motor_kinematic_control(calculate_L(R, theta, phi , deltaL), R, theta, phi, deltaL);
-                        printf("  计算得到的肌腱长度变化: ");
-                        for (int i = 0; i < 4; i++) {
-                            printf("deltaL[%d]=%.2f ", i, deltaL[i]);
-                        }
-                        printf("\n");
+
                     }
                     break;
                     
@@ -191,7 +185,8 @@ static void pc_cmd_parse_and_execute(void)
                                     uint16_t angle = (s_ctrlBuf[6] << 8) | s_ctrlBuf[7];
 									double val = (double)angle / 100;
                                     // 调用喷管弯曲控制函数
-                                	armBend(1,direction, val);
+                                	char dir = direction == 0? 'u': 'd';
+                                	armBend(1, dir, val);
 
                                 } else if (addr == 0xFD) {
                                     // 截面收缩指令: 地址=0xFD, 方向, 比例
@@ -199,6 +194,7 @@ static void pc_cmd_parse_and_execute(void)
                                     uint16_t scale = (s_ctrlBuf[6] << 8) | s_ctrlBuf[7];
 									float val = (float)scale / 100.f;
                                 	scale_squared(direction, val);
+
 
                                 } else if (data_len >= 8) {
                                     // 完整电机控制指令: 地址 + 方向 + 距离 + 速度 + 加速度

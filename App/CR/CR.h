@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "Motor/Motor.h"
 /**********************************************************
 ***	编写作者：blinest
 
@@ -18,7 +19,7 @@ typedef struct JointSpace
 {
 	float phi;
 	float theta;
-	float deltaL[4]; //这里不使用 deltal[0]
+	float deltaL[3]; //这里不使用 deltal[0]
 } JointSpace;
 
 typedef struct OperationSpace
@@ -52,7 +53,7 @@ void LQTS_init(void);
 uint8_t armBend(int seg, char direction, double val);
 uint8_t armBend_edit(int seg, char direction, double val, double g_u, double g_r, double g_d, double g_l, double seg1_limit, double seg2_limit);
 void deltaL_update(void);
-void autostraight(void);
+void auto_straight(void);
 int direction_to_index(char direction);
 void scale_squared(uint8_t direction, float val);
 double tendonCompensation(int seg, char direction, double angle_deg);

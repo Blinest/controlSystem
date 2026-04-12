@@ -65,7 +65,7 @@ void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
-  huart1.Init.BaudRate = 9600;
+  huart1.Init.BaudRate = 115200;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;
@@ -240,35 +240,6 @@ void Usart_SendString(UART_HandleTypeDef *huart, uint8_t *str, uint16_t len)
   HAL_UART_Transmit(huart, str, len, timeout);
 }
 
-/**
-  * @brief 解析电机反馈数据
-  * @param buffer: 数据缓冲区
-  * @param length: 数据长度
-  */
-void parse_motor_feedback(uint8_t *buffer, uint8_t length)
-{
-  if (length < 8) return; // 最小数据长度：地址(1) + 功能码(1) + 数据(6)
-  
-  uint8_t addr = buffer[0];
-  uint8_t func = buffer[1];
-  
-  // 查找对应的电机
-  for (int i = 0; i < MOTOR_NUM; i++) {
-    if (global_motor[i].id == addr) {
-      // 解析位置数据（大端序）
-      motor_feedback[i].addr = addr;
-      motor_feedback[i].func = func;
-      motor_feedback[i].motor_data_cur[0] = (buffer[2] << 8) | buffer[3];
-      motor_feedback[i].motor_data_cur[1] = (buffer[4] << 8) | buffer[5];
-      motor_feedback[i].motor_data_cur[2] = (buffer[6] << 8) | buffer[7];
-      motor_feedback[i].state = (buffer[7] & 0x01); // 状态位（最后一个字节的最低位）
-      
-      // 将数据放入 CmdDataQueue
-      osMessageQueuePut(CmdDataQueueHandle, &motor_feedback[i], 0, 0);
-      break;
-    }
-  }
-}
 
 uint8_t rxData1 = 0, rxData2 = 0;
 // 启动中断

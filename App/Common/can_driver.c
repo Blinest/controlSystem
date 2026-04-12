@@ -2,7 +2,7 @@
 #include <string.h>
 #include "usart.h"
 #include "Motor/Motor.h"
-#include "Motor/Emm42_command.h"
+#include "Motor/XV2_command.h"
 // CAN接收队列
 osMessageQueueId_t CAN_RxQueueHandle;
 CAN_TxHeaderTypeDef TxHeader;
@@ -11,8 +11,6 @@ CAN_TxHeaderTypeDef TxHeader;
  */
 void CAN_Driver_Init(void)
 {
-    // 创建CAN接收队列
-    CAN_RxQueueHandle = osMessageQueueNew(32, sizeof(CAN_Message_t), NULL);
 
     // 启动CAN
     HAL_CAN_Start(&hcan);
@@ -70,9 +68,11 @@ void CAN_SendCmd(CAN_HandleTypeDef *hcan, uint8_t *cmd, uint8_t len)
 		for (uint8_t i = 0; i < send_data_len; i++) {
 			tx_data[1 + i] = data[offset + i];
 		}
-
 		uint32_t TxMailbox;
+		//Usart_SendString(&huart1, tx_data, 8);
+		//HAL_Delay(5);
 		if (HAL_CAN_AddTxMessage(hcan, &TxHeader, tx_data, &TxMailbox) != HAL_OK) {
+			// Usart_SendString(&huart1, (uint8_t*)"CAN Tx fail\r\n", 13);
 			return;   // 发送失败（例如邮箱满）
 		}
 
@@ -99,7 +99,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 
 			if (global_motor[i].id == (RxHeader.ExtId >> 8))
 			{
-				emm42_parse_can(&global_motor[i], RxHeader.ExtId, rx_data, RxHeader.DLC, true);
+				X_V2_parse_can(&global_motor[i], RxHeader.ExtId, rx_data, RxHeader.DLC, true);
 				break;
 			}
 		}

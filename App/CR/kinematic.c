@@ -10,8 +10,8 @@
 
 ***	qq：1071378062
 **********************************************************/
-Kinematic calculate_L(uint8_t R, float theta, float phi, float deltaL[]) {
-	deltaL[1] = R * theta * cos(phi);
-	deltaL[2] = R * theta * cos(phi + 2.0 / 3.0 * pi);
-	deltaL[3] = R * theta * cos(phi + 4.0 / 3.0 * pi);
+Kinematic calculate_L(float R, float theta, float phi, float deltaL[]) {
+	deltaL[0] = -R * theta * cos(phi);
+	deltaL[1] = -R * theta * cos(phi + 2.0 / 3.0 * pi);
+	deltaL[2] = -R * theta * cos(phi + 4.0 / 3.0 * pi);
 }

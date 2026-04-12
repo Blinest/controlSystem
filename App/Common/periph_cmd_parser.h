@@ -24,7 +24,7 @@ extern "C" {
  * @param byte 接收到的单字节数据
  */
 
-void emm42_parse_feed_byte(uint8_t byte);
+void X_V2_parse_feed_byte(uint8_t byte);
 void sensor_data_parser_feed_byte(uint8_t byte);
 void parse_sensor_feedback_data(void);
 #ifdef __cplusplus

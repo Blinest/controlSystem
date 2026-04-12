@@ -33,15 +33,7 @@ enable_language(C ASM)
 
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME}
-    BSP/Sensor/Sensor.c
-    App/CR/kinematic.c
-    BSP/Motor/motor_limits.c
-    App/Common/can_driver.c
-    App/Common/can_driver.h
-    BSP/Motor/ZDT_X42_V2.c
-    BSP/Motor/ZDT_X42_V2.h
-    BSP/Motor/Emm_V5.c
-    BSP/Motor/Emm_V5.h
+
 )
 
 # Add STM32CubeMX generated sources
@@ -63,9 +55,15 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Common/periph_cmd_parser.c
     App/Common/cmd_packer.c
     App/CR/CR.c
+    App/CR/kinematic.c
+    App/Common/can_driver.c
+    App/Common/can_driver.h
     BSP/Motor/Motor.c
     BSP/Sensor/IMU.c
-    BSP/Motor/Emm42_command.c
+    BSP/Motor/XV2_command.c
+    BSP/Sensor/Sensor.c
+    BSP/Motor/X_V2.c
+    BSP/Motor/motor_limits.c
 )
 
 # Add include paths
@@ -88,7 +86,6 @@ list(REMOVE_ITEM CMAKE_C_IMPLICIT_LINK_LIBRARIES ob)
 # Add linked libraries
 target_link_libraries(${CMAKE_PROJECT_NAME}
     stm32cubemx
-
     # Add user defined libraries
 )
 

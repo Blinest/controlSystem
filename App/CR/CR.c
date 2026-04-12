@@ -11,7 +11,7 @@
 #include "CR.h"
 #include "usart.h"
 #include "kinematic.h"
-#include "Motor/Motor.h"
+
 #include <stdio.h>
 #include "math.h"
 #include "Sensor/Sensor.h"
@@ -23,7 +23,7 @@
 #define LQTS_THETA2_MIN -40
 #define LQTS_ANGLE_RANGE 30
 #define pi 3.1415926535
-#define MOTOR_NUM 3
+
 
 /*
  臂体补偿器
@@ -36,6 +36,7 @@ bool tendon_comp = true;
 ***	qq：1071378062
 **********************************************************/
 
+// 创建 lqts 结构体
 LQTS lqts;
 
 void LQTS_init(void)
@@ -61,14 +62,22 @@ void LQTS_init(void)
     };
 	lqts.operation_space.scale = 20;
 	lqts.joint_space.theta = 30;
-    lqts.parameter.r = 5; // 肌腱与中心孔距离 5mm
+    lqts.parameter.r = 80; // 肌腱与中心孔距离 80mm
     motor_init();
 	sensor_init();
 }
 
 // 用于控制喷管弯曲
+/**
+ *
+ * @param seg :段
+ * @param direction：方向 0,1
+ * @param val
+ * @return
+ */
 uint8_t armBend(int seg, char direction, double val)
 {
+
 	lqts.joint_space.theta = direction == 1 ? val : -val;
     return armBend_edit(seg, direction, val, 0, 0.15, 0, 0.18, 90.0, 60.0);
 }
@@ -76,22 +85,37 @@ uint8_t armBend(int seg, char direction, double val)
 void deltaL_update(void)
 {
     // 存储当前位置
-    // float cur_pos[MOTOR_NUM + 1];
-    for(int i = 1; i <= 6; i++)
-    {
-        // cur_pos[i] = LQTS.joint_space.deltaL[i];
-    }
+    float cur_pos[3];
+	for(int i = 0; i < 3; i++)
+	{
+		cur_pos[i] = lqts.joint_space.deltaL[i];
+	}
+	// 调用运动学模型，更新位置
+	calculate_L(lqts.parameter.r, lqts.joint_space.theta,lqts.joint_space.phi,lqts.joint_space.deltaL);
+	// char response[128];
+	// float v0 = lqts.joint_space.deltaL[0];
+	// float v1 = lqts.joint_space.deltaL[1];
+	// float v2 = lqts.joint_space.deltaL[2];
+	//
+	// int i0 = (int)v0, f0 = (int)((v0 - i0) * 100 + 0.5f); if (f0 >= 100) { f0 -= 100; i0++; }
+	// int i1 = (int)v1, f1 = (int)((v1 - i1) * 100 + 0.5f); if (f1 >= 100) { f1 -= 100; i1++; }
+	// int i2 = (int)v2, f2 = (int)((v2 - i2) * 100 + 0.5f); if (f2 >= 100) { f2 -= 100; i2++; }
+	//
+	// int size = snprintf(response, sizeof(response), "Parameters: %d.%02d, %d.%02d, %d.%02d\r\n", i0, f0, i1, f1, i2, f2);
+	// Usart_SendString(&huart1, (uint8_t*)response, size);
 
-    char response[128];
-    sprintf(response, "Parameters: %.2f, %.2f, %.2f, %.2f, %.2f, %.2f\r\n",lqts.joint_space.deltaL[1], lqts.joint_space.deltaL[2],lqts.joint_space.deltaL[3],lqts.joint_space.deltaL[4],lqts.joint_space.deltaL[5],lqts.joint_space.deltaL[6]);
+	HAL_Delay(20);
+	// 调用底层多电机控制库，目前使用的是1-3号电机
+	motor_sync_control(3, 1, lqts.joint_space.deltaL);
 
 }
 
-void autostraight(void)
+void auto_straight(void)
 {
     lqts.joint_space.theta = 0;
     lqts.joint_space.phi = 0;
 	lqts.operation_space.scale = 0;
+
     deltaL_update();
 }
 
@@ -162,8 +186,44 @@ double tendonCompensation(int seg, char direction, double angle_deg)
 void scale_squared(uint8_t direction, float val)
 {
 	lqts.operation_space.scale = direction == 1? val : -val;
+	float R = 10;
+	float target;
+	float val_sqrt = sqrtf(val);
+	target = 2 * pi * R - 2 * pi * val_sqrt * R / 100;
+	// float testVal = target;
+	// int int_part = (int)testVal;
+	// int frac_part = (int)((testVal - int_part) * 100 + 0.5);  // 保留两位小数，四舍五入
+	// if (frac_part < 0) frac_part = -frac_part;  // 小数部分取绝对值
+	// if (frac_part >= 100) {  // 处理进位，如 1.999 -> 2.00
+	// 	int_part += 1;
+	// 	frac_part -= 100;
+	// }
+	//
+	// char test[32];
+	// int len = snprintf(test, sizeof(test), "%d.%02d", int_part, frac_part);
+	// if (len > 0 && len < sizeof(test)) {
+	// 	Usart_SendString(&huart1, (uint8_t*)test, len);
+	// } else {
+	// 	Usart_SendString(&huart1, (uint8_t*)"ERR_FMT\r\n", 9);
+	// }
+	motor_run(0, 10, target ,false);
 }
 
+/**
+ *
+ * @param seg
+ *
+ * /
+ * @param direction ：弯曲方向：urdl
+ * @param val ：弯曲角度: deg
+ * @param g_u ：向上补偿
+ * @param g_r ：向右补偿
+ * @param g_d ：向下补偿
+ * @param g_l ：向左补偿
+ * @param seg1_limit
+ * @param seg2_limit
+ * @return
+	 */
 uint8_t armBend_edit(int seg, char direction, double val, double g_u, double g_r, double g_d, double g_l, double seg1_limit, double seg2_limit)
 {
     // 节段、角度限制检查
@@ -197,7 +257,6 @@ uint8_t armBend_edit(int seg, char direction, double val, double g_u, double g_r
         case 'l': phi = 3 * pi / 2 + val_rad * g_l; break;
         default: return 1;
     }
-
     // 更新补偿后的关节角度
     lqts.joint_space.theta = compensated_angle_rad;
     lqts.joint_space.phi = phi;

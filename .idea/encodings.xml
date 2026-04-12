@@ -3,5 +3,7 @@
   <component name="Encoding">
     <file url="file://$PROJECT_DIR$/BSP/Motor/Emm_V5.c" charset="GB2312" />
     <file url="file://$PROJECT_DIR$/BSP/Motor/Emm_V5.h" charset="GB2312" />
+    <file url="file://$PROJECT_DIR$/BSP/Motor/X_V2.c" charset="GB2312" />
+    <file url="file://$PROJECT_DIR$/BSP/Motor/X_V2.h" charset="GB2312" />
   </component>
 </project>

@@ -8,6 +8,6 @@
 ***	qq：1071378062
 **********************************************************/
 
-Kinematic calculate_L(uint8_t R, float theta, float phi, float deltaL[]);
+Kinematic calculate_L(float R, float theta, float phi, float deltaL[]);
 
 #endif

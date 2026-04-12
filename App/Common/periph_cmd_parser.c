@@ -10,7 +10,7 @@
 
 #include "periph_cmd_parser.h"
 #include "Motor/Motor.h"
-#include "Motor/Emm42_command.h"
+#include "Motor/XV2_command.h"
 #include "Sensor/Sensor.h"
 #include "cmsis_os2.h"
 #include "string.h"
@@ -71,23 +71,23 @@ static void sensor_cmd_parser_reset(void) {
     ))
 
 /**
- * @brief Emm42 协议解析状态机
- * 基于 Emm42_command.h 中的 emm42_parse 函数
+ * @brief X_V2 协议解析状态机
+ * 基于 X_V2_command.h 中的 X_V2_parse 函数
  */
-void emm42_parse_feed_byte(uint8_t byte)
+void X_V2_parse_feed_byte(uint8_t byte)
 {
-    static uint8_t emm42_buffer[32];
-    static uint8_t emm42_idx = 0;
-    static bool emm42_in_frame = false;
+    static uint8_t X_V2_buffer[32];
+    static uint8_t X_V2_idx = 0;
+    static bool X_V2_in_frame = false;
 
     // 检查帧开始：地址字节（电机地址）
-    if (!emm42_in_frame) {
+    if (!X_V2_in_frame) {
         // 检查是否是有效的电机地址
         for (int i = 0; i < MOTOR_NUM; i++) {
             if (global_motor[i].id == byte) {
-                emm42_in_frame = true;
-                emm42_idx = 0;
-                emm42_buffer[emm42_idx++] = byte;
+                X_V2_in_frame = true;
+                X_V2_idx = 0;
+                X_V2_buffer[X_V2_idx++] = byte;
                 return;
             }
         }
@@ -96,18 +96,18 @@ void emm42_parse_feed_byte(uint8_t byte)
     }
 
     // 正在接收帧
-    if (emm42_idx < sizeof(emm42_buffer)) {
-        emm42_buffer[emm42_idx++] = byte;
+    if (X_V2_idx < sizeof(X_V2_buffer)) {
+        X_V2_buffer[X_V2_idx++] = byte;
     }
 
     // 检查帧结束：0x6B 结尾
     if (byte == 0x6B) {
         // 完整帧接收完成，开始解析
         for (int i = 0; i < MOTOR_NUM; i++) {
-            if (global_motor[i].id == emm42_buffer[0]) {
-                // 使用 Emm42_command.h 中的解析函数
-                emm42_result_t result = emm42_parse_can(&global_motor[i],global_motor[i].id, emm42_buffer, emm42_idx, true);
-                if (result == EMM42_OK) {
+            if (global_motor[i].id == X_V2_buffer[0]) {
+                // 使用 X_V2_command.h 中的解析函数
+                X_V2_result_t result = X_V2_parse_can(&global_motor[i],global_motor[i].id, X_V2_buffer, X_V2_idx, true);
+                if (result == X_V2_OK) {
                     // 数据打包发送
                 	global_motor[i].state = 1;
                 	cmd_packer_send_status_frame();
@@ -116,8 +116,8 @@ void emm42_parse_feed_byte(uint8_t byte)
             }
         }
         // 重置状态
-        emm42_in_frame = false;
-        emm42_idx = 0;
+        X_V2_in_frame = false;
+        X_V2_idx = 0;
     }
 }
 

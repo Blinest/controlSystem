@@ -19,7 +19,7 @@
 #include "usart.h"
 #include "Motor/Motor.h"
 #include "Sensor/Sensor.h"
-#include "Motor/Emm42_command.h"
+#include "Motor/XV2_command.h"
 #include "Common/periph_cmd_parser.h"
 #include "Common/cmd_parse_unified.h"
 #include "Common/cmd_packer.h"
@@ -46,8 +46,8 @@ void StartDataTask(void *argument)
         // ====================================
        while (osMessageQueueGet(CmdDataQueueHandle, &rx_byte, NULL, 0) == osOK)
         {
-            // 调用新的 Emm42 协议解析函数
-        	emm42_parse_feed_byte(rx_byte);
+            // 调用新的 X_V2 协议解析函数
+        	X_V2_parse_feed_byte(rx_byte);
         	sensor_data_parser_feed_byte(rx_byte);
         	// Usart_SendString(&huart2, &rx_byte, 1);
         }
