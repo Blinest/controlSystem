@@ -69,7 +69,7 @@ void CAN_SendCmd(CAN_HandleTypeDef *hcan, uint8_t *cmd, uint8_t len)
 			tx_data[1 + i] = data[offset + i];
 		}
 		uint32_t TxMailbox;
-		//Usart_SendString(&huart1, tx_data, 8);
+		// Usart_SendString(&huart1, tx_data, 8);
 		//HAL_Delay(5);
 		if (HAL_CAN_AddTxMessage(hcan, &TxHeader, tx_data, &TxMailbox) != HAL_OK) {
 			// Usart_SendString(&huart1, (uint8_t*)"CAN Tx fail\r\n", 13);

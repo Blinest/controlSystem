@@ -51,7 +51,6 @@ void motor_enable(uint8_t addr,bool enable)
 {
 	// 更新电机状态，(电机使能状态 0x02)
 	X_V2_En_Control(addr, enable, 0);
-
 }
 
 // 错误处理函数（增强版，支持限制条件错误）

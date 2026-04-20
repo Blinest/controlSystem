@@ -38,13 +38,13 @@ uint16_t cmd_packer_pack_status_frame(uint8_t* frame, GlobalMotor motor[MOTOR_NU
 
     // 电机数据
     for (int i = 0; i < MOTOR_NUM; i++) {
-        // int16_t pos = (int16_t)(motor[i].stepper_motor.current_pos * 100); // mm
-        // int16_t vel = (int16_t)(motor[i].stepper_motor.current_vel * 100); // mm/s
-        // int16_t acc = (int16_t)(motor[i].stepper_motor.current_acc * 100); // mm/s^2
+        int16_t pos = (int16_t)(motor[i].stepper_motor.current_pos * 100); // mm
+        int16_t vel = (int16_t)(motor[i].stepper_motor.current_vel * 100); // mm/s
+        int16_t acc = (int16_t)(motor[i].stepper_motor.current_acc * 100); // mm/s^2
     	// 调试用 4.12
-    	int16_t pos = (int16_t)(motor[i].stepper_motor.target_pos * 100); // mm
-    	int16_t vel = (int16_t)(motor[i].stepper_motor.target_vel * 100); // mm/s
-    	int16_t acc = (int16_t)(motor[i].stepper_motor.current_acc * 100); // mm/s^2
+    	// int16_t pos = (int16_t)(motor[i].stepper_motor.target_pos * 100); // mm
+    	// int16_t vel = (int16_t)(motor[i].stepper_motor.target_vel * 100); // mm/s
+    	// int16_t acc = (int16_t)(motor[i].stepper_motor.current_acc * 100); // mm/s^2
     	int8_t motor_state = (int8_t)(motor[i].state);
     	// 填入数据包
         frame[idx++] = (pos >> 8) & 0xFF; frame[idx++] = pos & 0xFF;

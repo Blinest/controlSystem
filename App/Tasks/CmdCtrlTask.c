@@ -37,8 +37,6 @@ void StartCmdCtrlTask(void *argument)
 	memset(sensor_angle, 0, sizeof(sensor_angle));
     for (;;)
     {
-        // 电机使能放在循环开始，确保每次循环都执行
-        
 	    // 从队列接收上位机指令
 	    if (osMessageQueueGet(CmdCtrlQueueHandle, &receive, NULL, 0) == osOK) {
 	        // 优先回显，提高响应性
@@ -57,7 +55,7 @@ void StartCmdCtrlTask(void *argument)
     	if ((current_time - last_send_time) >= 1000)
     	{
     		// 电机状态检测 (使用 static 以节省堆栈空间)，心跳检测
-    		// motor_status_check();
+    		motor_status_check();
     		last_send_time = current_time;
     	}
         // 添加小延时，避免过度占用CPU
