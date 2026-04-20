@@ -189,7 +189,7 @@ void scale_squared(uint8_t direction, float val)
 	float R = 10;
 	float target;
 	float val_sqrt = sqrtf(val);
-	target = 2 * pi * R - 2 * pi * val_sqrt * R / 100;
+	target = pi * (R -  val_sqrt * R) / 50;
 	// float testVal = target;
 	// int int_part = (int)testVal;
 	// int frac_part = (int)((testVal - int_part) * 100 + 0.5);  // 保留两位小数，四舍五入
