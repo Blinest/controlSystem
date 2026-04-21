@@ -1,39 +1,35 @@
 /**
- * @file periph_cmd_parser.c
+ * @file sensor_cmd_parser.c
  * @brief 下位机指令解析库
  * 
- * 负责解析外设（电机/传感器）反馈的指令，更新全局结构体
+ * 负责解析外设（传感器）反馈的指令，更新全局结构体
  * 
  * @date 2026-03-30
  * @author Psyduck
  */
 
-#include "periph_cmd_parser.h"
-#include "Motor/Motor.h"
-#include "Motor/XV2_command.h"
+#include "sensor_cmd_parser.h"
+#include "XV2_cmd_parser.h"
 #include "Sensor/Sensor.h"
 #include "cmsis_os2.h"
 #include "string.h"
 #include "cmd_packer.h"
 #include "can_driver.h"
 
-// 引用外部队列
-extern osMessageQueueId_t SensorMessageQueueHandle;
 
 /* 帧头定义 */
-#define FRAME_HEAD_PERIPH     0xAA    /* 外设反馈帧头 */
-
+#define SENSOR_ID 0x01 /* 传感器地址定义 */
 /* 功能码定义 */
 #define FUNC_SENSOR_FEEDBACK  0x03    /* 传感器反馈功能码 */
 
 /* 帧解析状态机 */
 typedef enum {
- CMD_STATE_HEAD = 0,   /* 等待帧头 */
- CMD_STATE_FUNC,       /* 已收到帧头，等待功能码 */
- CMD_STATE_LEN,        /* 已收到功能码，等待数据长度 L */
- CMD_STATE_DATA,       /* 已知 L，接收 L 字节数据 */
- CMD_STATE_CHECK       /* 等待校验和字节 */
-} CmdParseState_t;
+ SENSOR_STATE_HEAD = 0,   /* 等待帧头 */
+ SENSOR_STATE_FUNC,       /* 已收到帧头，等待功能码 */
+ SENSOR_STATE_LEN,        /* 已收到功能码，等待数据长度 L */
+ SENSOR_STATE_DATA,       /* 已知 L，接收 L 字节数据 */
+ SENSOR_STATE_CHECK       /* 等待校验和字节 */
+} SensorParseState_t;
 
 
 /* --- 传感器反馈解析缓冲区与状态 --- */
@@ -41,14 +37,14 @@ typedef enum {
 static uint8_t s_sensorBuf[SENSOR_BUF_SIZE];
 static uint8_t s_sensorLen;
 static uint8_t s_sensorIdx;
-static CmdParseState_t s_sensorState = CMD_STATE_HEAD;
+static SensorParseState_t s_sensorState = SENSOR_STATE_HEAD;
 
 
 /**
  * @brief 重置传感器反馈解析状态
  */
-static void sensor_cmd_parser_reset(void) {
-    s_sensorState = CMD_STATE_HEAD;
+static void sensor_parser_reset(void) {
+    s_sensorState = SENSOR_STATE_HEAD;
     s_sensorLen = 0;
     s_sensorIdx = 0;
 	// 也可以把缓冲数组给清空，不过似乎会极大拖慢执行速度，而且理论上不会出现异常问题，即使出现异常也已经做过异常判断了，去除
@@ -60,68 +56,6 @@ static void sensor_cmd_parser_reset(void) {
 
 
 /**
- * @brief 4字节大端转 int32
- */
-#define EMMV5_POS_BE_TO_I32(pos_be) \
-    ((int32_t)( \
-        ((uint32_t)((pos_be)[0]) << 24) | \
-        ((uint32_t)((pos_be)[1]) << 16) | \
-        ((uint32_t)((pos_be)[2]) << 8)  | \
-        ((uint32_t)((pos_be)[3]) << 0)  \
-    ))
-
-/**
- * @brief X_V2 协议解析状态机
- * 基于 X_V2_command.h 中的 X_V2_parse 函数
- */
-void X_V2_parse_feed_byte(uint8_t byte)
-{
-    static uint8_t X_V2_buffer[32];
-    static uint8_t X_V2_idx = 0;
-    static bool X_V2_in_frame = false;
-
-    // 检查帧开始：地址字节（电机地址）
-    if (!X_V2_in_frame) {
-        // 检查是否是有效的电机地址
-        for (int i = 0; i < MOTOR_NUM; i++) {
-            if (global_motor[i].id == byte) {
-                X_V2_in_frame = true;
-                X_V2_idx = 0;
-                X_V2_buffer[X_V2_idx++] = byte;
-                return;
-            }
-        }
-        // 如果不是电机地址，跳转到传感器指令解析
-        return;
-    }
-
-    // 正在接收帧
-    if (X_V2_idx < sizeof(X_V2_buffer)) {
-        X_V2_buffer[X_V2_idx++] = byte;
-    }
-
-    // 检查帧结束：0x6B 结尾
-    if (byte == 0x6B) {
-        // 完整帧接收完成，开始解析
-        for (int i = 0; i < MOTOR_NUM; i++) {
-            if (global_motor[i].id == X_V2_buffer[0]) {
-                // 使用 X_V2_command.h 中的解析函数
-                X_V2_result_t result = X_V2_parse_can(&global_motor[i],global_motor[i].id, X_V2_buffer, X_V2_idx, true);
-                if (result == X_V2_OK) {
-                    // 数据打包发送
-                	global_motor[i].state = 1;
-                	cmd_packer_send_status_frame();
-                }
-                break;
-            }
-        }
-        // 重置状态
-        X_V2_in_frame = false;
-        X_V2_idx = 0;
-    }
-}
-
-/**
  * @brief 传感器指令解析函数 (Peripheral -> STM32)
  * @param byte 接收到的单字节数据
  */
@@ -131,51 +65,51 @@ void sensor_data_parser_feed_byte(uint8_t byte)
     
     switch (s_sensorState)
     {
-        case CMD_STATE_HEAD:
-            if (receive == FRAME_HEAD_PERIPH)
+        case SENSOR_STATE_HEAD:
+            if (receive == SENSOR_ID)
             {
                 s_sensorBuf[0] = receive;
                 s_sensorIdx = 1;
-                s_sensorState = CMD_STATE_FUNC;
+                s_sensorState = SENSOR_STATE_FUNC;
             }
             break;
             
-        case CMD_STATE_FUNC:
+        case SENSOR_STATE_FUNC:
             s_sensorBuf[1] = receive;
             s_sensorIdx = 2;
             
             if (receive == FUNC_SENSOR_FEEDBACK) {
-                s_sensorState = CMD_STATE_LEN;
+                s_sensorState = SENSOR_STATE_LEN;
             } else {
                 // 不是传感器反馈功能码，重置状态
-                sensor_cmd_parser_reset();
+                sensor_parser_reset();
             }
             break;
             
-        case CMD_STATE_LEN:
+        case SENSOR_STATE_LEN:
             s_sensorLen = receive;
             s_sensorBuf[2] = receive;
             if (s_sensorLen > (SENSOR_BUF_SIZE - 4) || s_sensorLen == 0)
             {
-                sensor_cmd_parser_reset();
+                sensor_parser_reset();
                 break;
             }
             
             s_sensorIdx = 3;
-            s_sensorState = (s_sensorLen == 0) ? CMD_STATE_CHECK : CMD_STATE_DATA;
+            s_sensorState = (s_sensorLen == 0) ? SENSOR_STATE_CHECK : SENSOR_STATE_DATA;
             break;
             
-        case CMD_STATE_DATA:
+        case SENSOR_STATE_DATA:
             if (s_sensorIdx < SENSOR_BUF_SIZE)
                 s_sensorBuf[s_sensorIdx++] = receive;
 
             if (s_sensorIdx >= (uint8_t)(3 + s_sensorLen))
             {
-                s_sensorState = CMD_STATE_CHECK;
+                s_sensorState = SENSOR_STATE_CHECK;
             }
             break;
             
-        case CMD_STATE_CHECK:
+        case SENSOR_STATE_CHECK:
             // 存储校验字节
             s_sensorBuf[s_sensorIdx] = receive;
             
@@ -188,12 +122,11 @@ void sensor_data_parser_feed_byte(uint8_t byte)
                 // 校验通过，解析传感器数据
                 parse_sensor_feedback_data();
             }
-            
-            sensor_cmd_parser_reset();
+            sensor_parser_reset();
             break;
             
         default:
-            sensor_cmd_parser_reset();
+            sensor_parser_reset();
             break;
     }
 }
@@ -222,7 +155,7 @@ void parse_sensor_feedback_data(void)
             global_sensor[sensor_id-1].y = (uint16_t)y; // 横滚角
             global_sensor[sensor_id-1].z = (uint16_t)z; // 偏航角
 
-            
+
             // 调试输出
             #ifdef DEBUG_SENSOR
             printf("[SENSOR] 传感器%d数据更新: X=%d, Y=%d, Z=%d (角度: %.2f, %.2f, %.2f)\n",

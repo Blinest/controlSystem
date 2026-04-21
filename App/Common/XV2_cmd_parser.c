@@ -3,7 +3,7 @@
  * 编译: gcc -o demo main.c -Wall -Wextra -std=c11
  */
 #include <stdio.h>
-#include "XV2_command.h"
+#include "XV2_cmd_parser.h"
 
 #include "usart.h"
 #include "Common/can_driver.h"

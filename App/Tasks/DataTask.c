@@ -1,6 +1,6 @@
 /**
  * @file DataTask.c
- * @brief 数据任务：负责 USART1 RX (外设反馈) 和 USART2 TX (发送至 PC)
+ * @brief 数据任务：负责 USART1 RX (传感器反馈) 和 USART2 TX (发送至 PC)
  *
  * 任务流程：
  * 1. 监听 CmdDataQueue (USART1 RX)，解析外设反馈并更新全局状态。
@@ -19,18 +19,13 @@
 #include "usart.h"
 #include "Motor/Motor.h"
 #include "Sensor/Sensor.h"
-#include "Motor/XV2_command.h"
-#include "Common/periph_cmd_parser.h"
-#include "Common/cmd_parse_unified.h"
+#include "../Common/XV2_cmd_parser.h"
+#include "Common/sensor_cmd_parser.h"
 #include "Common/cmd_packer.h"
 #include "Common/can_driver.h"
 #include "CR/CR.h"
 
-
-
 #define RX_BUF_SIZE 256
-
-
 
 void StartDataTask(void *argument)
 {
@@ -42,12 +37,11 @@ void StartDataTask(void *argument)
     {
 
         // ====================================
-        // 1. 数据采集流: 从外设 (CAN 或 Usart RX) 接收并处理
+        // 1. 数据采集流: 从外设 (CAN) 接收并处理
         // ====================================
        while (osMessageQueueGet(CmdDataQueueHandle, &rx_byte, NULL, 0) == osOK)
         {
-            // 调用新的 X_V2 协议解析函数
-        	X_V2_parse_feed_byte(rx_byte);
+       		// 传感器指令解析函数
         	sensor_data_parser_feed_byte(rx_byte);
         	// Usart_SendString(&huart2, &rx_byte, 1);
         }
@@ -64,7 +58,6 @@ void StartDataTask(void *argument)
         {
             // 打包系统状态数据 (使用 static 以节省堆栈空间)
             static uint8_t packed_frame[128];
-        	const float scale = lqts.operation_space.scale;
         	const uint8_t state = lqts.state;
             
             const uint16_t frame_len = cmd_packer_pack_status_frame(packed_frame, global_motor, global_sensor, &lqts, state);

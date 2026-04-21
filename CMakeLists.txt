@@ -50,9 +50,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     App/Tasks/DataTask.c
     App/Tasks/CmdCtrlTask.c
-    App/Common/cmd_parse_unified.c
     App/Common/pc_cmd_parser.c
-    App/Common/periph_cmd_parser.c
+    App/Common/sensor_cmd_parser.c
     App/Common/cmd_packer.c
     App/CR/CR.c
     App/CR/kinematic.c
@@ -60,7 +59,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Common/can_driver.h
     BSP/Motor/Motor.c
     BSP/Sensor/IMU.c
-    BSP/Motor/XV2_command.c
+    App/Common/XV2_cmd_parser.c
     BSP/Sensor/Sensor.c
     BSP/Motor/X_V2.c
     BSP/Motor/motor_limits.c

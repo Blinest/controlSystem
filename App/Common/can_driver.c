@@ -2,7 +2,7 @@
 #include <string.h>
 #include "usart.h"
 #include "Motor/Motor.h"
-#include "Motor/XV2_command.h"
+#include "XV2_cmd_parser.h"
 // CAN接收队列
 osMessageQueueId_t CAN_RxQueueHandle;
 CAN_TxHeaderTypeDef TxHeader;
@@ -91,12 +91,11 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
 	CAN_RxHeaderTypeDef RxHeader;
 	uint8_t rx_data[8];
-
+	// 直接完成电机指令解析
 	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, rx_data) == HAL_OK)
 	{
 		for (int i = 0; i < MOTOR_NUM; i++)
 		{
-
 			if (global_motor[i].id == (RxHeader.ExtId >> 8))
 			{
 				X_V2_parse_can(&global_motor[i], RxHeader.ExtId, rx_data, RxHeader.DLC, true);

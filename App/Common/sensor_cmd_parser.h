@@ -12,8 +12,6 @@
 #define __PERIPH_CMD_PARSER_H
 
 #include <stdint.h>
-#include "Motor/Motor.h"
-#include "Sensor/Sensor.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -23,8 +21,6 @@ extern "C" {
  * @brief 下位机指令解析函数 (Peripheral -> STM32)
  * @param byte 接收到的单字节数据
  */
-
-void X_V2_parse_feed_byte(uint8_t byte);
 void sensor_data_parser_feed_byte(uint8_t byte);
 void parse_sensor_feedback_data(void);
 #ifdef __cplusplus

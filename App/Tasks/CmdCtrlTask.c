@@ -13,7 +13,7 @@
 #include "string.h"
 #include "Common/can_driver.h"
 
-#include "Common/cmd_parse_unified.h"
+#include "Common/pc_cmd_parser.h"
 #include "Motor/Motor.h"
 #include "stdio.h"
 #include "usart.h"
@@ -37,28 +37,40 @@ void StartCmdCtrlTask(void *argument)
 	memset(sensor_angle, 0, sizeof(sensor_angle));
     for (;;)
     {
-	    // 从队列接收上位机指令
+	    // 从CmdCtrlQueue队列接收上位机的高级指令
 	    if (osMessageQueueGet(CmdCtrlQueueHandle, &receive, NULL, 0) == osOK) {
 	        // 优先回显，提高响应性
 	        if (rx_len < RX_BUF_SIZE) {
 	            rx_buffer[rx_len++] = receive;
-	        	// 进入指令解析函数，指令解析函数负责指令解析，而后再将解析好的指令传给电机进行解析
-	        	cmd_parse_feed_byte(receive);
+	        	// 进入上位机指令解析函数，上位机指令解析函数负责指令解析，而后再将解析好的指令传给电机进行解析
+	        	pc_cmd_parser_feed_byte(receive);
 	        } else {
                 rx_len = 0; // 缓冲区溢出重置
             }
 	    }
     	static uint32_t last_send_time = 0;
-    	uint32_t current_time = osKernelGetTickCount();
+    	uint32_t current_time_motor = osKernelGetTickCount();
 
-    	// 每500ms读取一次位置信息
-    	if ((current_time - last_send_time) >= 1000)
+    	// 每1000ms读取一次传感器与电机的状态信息
+    	if ((current_time_motor - last_send_time) >= 1000)
     	{
     		// 电机状态检测 (使用 static 以节省堆栈空间)，心跳检测
     		motor_status_check();
-    		last_send_time = current_time;
+    		last_send_time = current_time_motor;
     	}
-        // 添加小延时，避免过度占用CPU
-		osDelay(100);
+
+    	// 添加小延时，避免过度占用CPU
+    	osDelay(10);
+
+    	uint32_t current_time_sensor = osKernelGetTickCount();
+
+    	// 每1000ms读取一次传感器与电机的状态信息
+    	if ((current_time_sensor - last_send_time) >= 1000)
+    	{
+    		// IMU数据读取 (使用 static 以节省堆栈空间)，心跳检测
+    		sensor_single_read(1);
+    		last_send_time = current_time_sensor;
+    	}
+
 	  }
 }

@@ -4,6 +4,9 @@
     <option name="sourcePathsSet">
       <set>
         <option value="$PROJECT_DIR$/Control_Interface" />
+        <option value="$PROJECT_DIR$/App/Common/periph_cmd_parser.c" />
+        <option value="$PROJECT_DIR$/BSP/Motor/XV2_command.c" />
+        <option value="$PROJECT_DIR$/App/Common/XV2_command.c" />
       </set>
     </option>
   </component>

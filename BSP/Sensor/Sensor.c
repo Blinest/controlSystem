@@ -13,15 +13,14 @@
 #include "mpu9250.h"
 #include <stdio.h>
 
+#include "IMU.h"
+
 // 初始化全局传感器数组
 GlobalSensor global_sensor[SENSOR_NUM];
 
 // 模拟传感器数据（实际项目中应从硬件读取）
 static int16_t simulated_sensor_data[SENSOR_NUM][3] = {
     {1000, 2000, 3000},  // 传感器1: X,Y,Z
-    {1100, 2100, 3100},  // 传感器2
-    {1200, 2200, 3200},  // 传感器3
-    {1300, 2300, 3300}   // 传感器4
 };
 
 /**
@@ -61,6 +60,7 @@ void sensor_init(void)
  */
 void sensor_single_read(uint8_t sensor_id)
 {
+	// 发送指令进行读取
     if (sensor_id < 1 || sensor_id > SENSOR_NUM) {
         printf("[SENSOR] 错误: 无效的传感器ID %d\n", sensor_id);
         return;
@@ -78,7 +78,8 @@ void sensor_single_read(uint8_t sensor_id)
     // int16_t raw_x = (data[0] << 8) | data[1];
     // int16_t raw_y = (data[2] << 8) | data[3];
     // int16_t raw_z = (data[4] << 8) | data[5];
-    
+	// IMU 数据读取
+	IMU_single_read(1);
     // 使用模拟数据
     int16_t raw_x = simulated_sensor_data[idx][0];
     int16_t raw_y = simulated_sensor_data[idx][1];

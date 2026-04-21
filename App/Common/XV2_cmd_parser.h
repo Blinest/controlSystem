@@ -10,7 +10,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
-#include "Motor.h"
+#include "../../BSP/Motor/Motor.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
