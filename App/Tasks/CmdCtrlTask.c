@@ -48,29 +48,26 @@ void StartCmdCtrlTask(void *argument)
                 rx_len = 0; // 缓冲区溢出重置
             }
 	    }
-    	static uint32_t last_send_time = 0;
+    	static uint32_t last_send_time_motor = 0;
+    	static uint32_t last_send_time_sensor = 0;
     	uint32_t current_time_motor = osKernelGetTickCount();
+    	uint32_t current_time_sensor = osKernelGetTickCount();
 
-    	// 每1000ms读取一次传感器与电机的状态信息
-    	if ((current_time_motor - last_send_time) >= 1000)
+    	// 每500ms读取一次电机的状态数据
+    	if ((current_time_motor - last_send_time_motor) >= 500)
     	{
-    		// 电机状态检测 (使用 static 以节省堆栈空间)，心跳检测
+    		// 电机状态检测，心跳检测
     		motor_status_check();
-    		last_send_time = current_time_motor;
+    		last_send_time_motor = current_time_motor;
+    	}
+    	// 每200ms读取一次传感器数据
+    	if ((current_time_sensor - last_send_time_sensor) >= 200)
+    	{
+    		sensor_single_read(0x50);
+    		last_send_time_sensor = current_time_sensor;
     	}
 
     	// 添加小延时，避免过度占用CPU
     	osDelay(10);
-
-    	uint32_t current_time_sensor = osKernelGetTickCount();
-
-    	// 每1000ms读取一次传感器与电机的状态信息
-    	if ((current_time_sensor - last_send_time) >= 1000)
-    	{
-    		// IMU数据读取 (使用 static 以节省堆栈空间)，心跳检测
-    		sensor_single_read(1);
-    		last_send_time = current_time_sensor;
-    	}
-
 	  }
 }

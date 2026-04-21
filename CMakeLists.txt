@@ -33,6 +33,9 @@ enable_language(C ASM)
 
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME}
+    BSP/Sensor/WT_IMU.c
+    BSP/Sensor/WT_IMU.h
+    BSP/Sensor/REG.h
 
 )
 

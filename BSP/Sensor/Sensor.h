@@ -20,9 +20,9 @@
  */
 typedef struct
 {
-	uint16_t x;  /**< X轴数据 */
-	uint16_t y;  /**< Y轴数据 */
-	uint16_t z;  /**< Z轴数据 */
+	float x;  /**< X轴数据 */
+	float y;  /**< Y轴数据 */
+	float z;  /**< Z轴数据 */
 } GlobalSensor;
 
 /**

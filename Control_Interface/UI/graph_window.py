@@ -63,12 +63,6 @@ class GraphWindowUI(QDialog):
             self.btn_save.hide()
             self.btn_load.hide()
 
-        ctrl_layout = QHBoxLayout()
-        ctrl_layout.addLayout(focus_layout)
-        ctrl_layout.addStretch()
-        self.layout.addLayout(ctrl_layout)
-
-
         if enable_auto_save:
             auto_save_layout = QHBoxLayout()
             self.chk_auto_save = QCheckBox("⏱ 自动保存")
@@ -194,6 +188,11 @@ class GraphWindowUI(QDialog):
             chk.setParent(None)
         self.curves.clear()
         self.checkboxes.clear()
+        # 清空旧布局内容
+        while self.chk_layout.count():
+            item = self.chk_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
 
         # 重新创建复选框布局（需提前保存 chk_layout 为实例变量）
         colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728',
@@ -336,3 +335,66 @@ class HistoryFileDialog(QDialog):
     def _on_item_double_clicked(self, item):
         file_path = item.data(Qt.UserRole)
         self.file_selected.emit(file_path)
+
+# 追加在 ui/graph_window.py 末尾
+
+class BendGraphWindow(QDialog):
+    """喷管弯曲角度历史曲线窗口（目标角度、当前角度）"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("喷管弯曲角度历史曲线")
+        screen = QApplication.primaryScreen().availableGeometry()
+        self.resize(int(screen.width() * 0.6), int(screen.height() * 0.7))
+        self.setMinimumSize(640, 480)
+
+        self.layout = QVBoxLayout(self)
+
+        # 控制按钮
+        btn_layout = QHBoxLayout()
+        self.btn_focus = QPushButton("🎯 一键聚焦")
+        self.btn_reset = QPushButton("🔄 重置视图")
+        self.btn_save = QPushButton("💾 保存数据")
+        btn_layout.addWidget(self.btn_focus)
+        btn_layout.addWidget(self.btn_reset)
+        btn_layout.addWidget(self.btn_save)
+        btn_layout.addStretch()
+        self.layout.addLayout(btn_layout)
+
+        # 绘图区域
+        pg.setConfigOptions(antialias=True)
+        self.plot_widget = pg.PlotWidget(background='w')
+        self.plot_widget.addLegend()
+        self.plot_widget.setLabel('bottom', '时间', units='秒')
+        self.plot_widget.setLabel('left', '角度', units='度')
+        self.plot_widget.showGrid(x=True, y=True, alpha=0.3)
+        self.layout.addWidget(self.plot_widget)
+
+        # 坐标显示
+        self.coord_label = QLabel("点击曲线查看该点坐标")
+        self.coord_label.setStyleSheet("background-color: #F5F5F5; border: 1px solid #CCC; padding: 5px;")
+        self.layout.addWidget(self.coord_label)
+
+        # 曲线对象
+        self.curve_target = self.plot_widget.plot(name="目标弯曲角度", pen=pg.mkPen(color='#D13438', width=2))
+        self.curve_current = self.plot_widget.plot(name="当前弯曲角度", pen=pg.mkPen(color='#107C10', width=2))
+
+        # 数据存储
+        self.time_data = []
+        self.target_data = []
+        self.current_data = []
+
+        self._controller = None
+
+    def set_controller(self, controller):
+        self._controller = controller
+        self.btn_focus.clicked.connect(controller.auto_focus)
+        self.btn_reset.clicked.connect(controller.reset_view)
+        self.btn_save.clicked.connect(controller.save_data)
+
+    def update_data(self, times, targets, currents):
+        """更新曲线数据"""
+        self.time_data = times
+        self.target_data = targets
+        self.current_data = currents
+        self.curve_target.setData(times, targets)
+        self.curve_current.setData(times, currents)

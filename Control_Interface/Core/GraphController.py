@@ -12,6 +12,7 @@ import csv
 import bisect
 import unicodedata
 import pyqtgraph as pg
+from datetime import datetime
 class GraphController(QObject):
     def __init__(self, ui, is_history_mode=False):
         super().__init__()
@@ -458,3 +459,35 @@ class GraphController(QObject):
         before = x_data[idx - 1]
         after = x_data[idx]
         return idx if (after - target_x) < (target_x - before) else idx - 1
+
+# 新建文件 ui/bend_graph_controller.py 或追加到 graph_controller.py
+class BendGraphController:
+    def __init__(self, window, data_provider):
+        self.window = window
+        self.data_provider = data_provider   # 回调获取最新数据
+        self.window.set_controller(self)
+
+    def auto_focus(self):
+        if not self.window.time_data:
+            return
+        self.window.plot_widget.autoRange()
+
+    def reset_view(self):
+        self.window.plot_widget.setRange(xRange=None, yRange=None, padding=0.05)
+
+    def save_data(self):
+        # 保存弯曲数据为 CSV
+        if not self.window.time_data:
+            QMessageBox.warning(self.window, "无数据", "没有数据可保存")
+            return
+        # 生成文件名
+        now = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_dir = os.path.expanduser("~/.lqts/analyze_data/bend_data")
+        os.makedirs(base_dir, exist_ok=True)
+        fpath = os.path.join(base_dir, f"bend_angle_{now}.csv")
+        with open(fpath, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(["时间(秒)", "目标角度(deg)", "当前角度(deg)"])
+            for t, target, current in zip(self.window.time_data, self.window.target_data, self.window.current_data):
+                writer.writerow([f"{t:.3f}", f"{target:.3f}", f"{current:.3f}"])
+        QMessageBox.information(self.window, "保存成功", f"数据已保存至\n{fpath}")

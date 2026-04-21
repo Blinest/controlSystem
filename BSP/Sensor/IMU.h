@@ -5,6 +5,15 @@
 
 #ifndef CONTROLSYSTEM_IMU_H
 #define CONTROLSYSTEM_IMU_H
-void IMU_single_read(uint8_t sensor_id);
 
+#define ACC_UPDATE		0x01
+#define GYRO_UPDATE		0x02
+#define ANGLE_UPDATE	0x04
+#define MAG_UPDATE		0x08
+#define READ_UPDATE		0x80
+
+void IMU_Init(void);
+void IMU_single_read(uint8_t sensor_id);
+static void SensorUartSend(uint8_t *p_data, uint32_t uiSize);
+static void CopeSensorData(uint32_t uiReg, uint32_t uiRegNum);
 #endif //CONTROLSYSTEM_IMU_H

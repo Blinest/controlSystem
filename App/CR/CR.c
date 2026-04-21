@@ -183,13 +183,24 @@ double tendonCompensation(int seg, char direction, double angle_deg)
 }
 
 // 用于控制截面面积收缩
+/**
+ *
+ * @param direction 1正
+ * @param val 目前的取值范围为 50.0f-100.0f，百分数
+ */
 void scale_squared(uint8_t direction, float val)
 {
+	// 限制条件
+	if (val < 75) return;
+
+	// 运动学推导
 	lqts.operation_space.scale = direction == 1? val : -val;
-	float R = 10;
+	float R = 50;
 	float target;
-	float val_sqrt = sqrtf(val);
-	target = pi * (R -  val_sqrt * R) / 50;
+	float val_sqrt = sqrtf(val) / 10.0f;
+	target = 2.0f * pi * (R -  val_sqrt * R);
+
+
 	// float testVal = target;
 	// int int_part = (int)testVal;
 	// int frac_part = (int)((testVal - int_part) * 100 + 0.5);  // 保留两位小数，四舍五入

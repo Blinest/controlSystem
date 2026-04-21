@@ -81,7 +81,9 @@ class MainWindow(QMainWindow):
         toolbar.addAction("📉 IMU反馈数据曲线", lambda: self.open_graph('sensor'))
         toolbar.addSeparator()
 
-
+        # 喷管弯曲历史曲线
+        toolbar.addAction("📊 喷管弯曲历史曲线", self.open_bend_graph)
+        toolbar.addSeparator()
 
         # 日志管理按钮 - 只有管理员可见
         self.log_manager_action = toolbar.addAction("📋 日志管理")
@@ -458,6 +460,7 @@ class MainWindow(QMainWindow):
             is_motor = False
             num_devices = dev.num_s
 
+
         ui = GraphWindowUI(title, is_motor=is_motor, num_devices=num_devices)
         controller = GraphController(ui, is_history_mode=False)
         controller.main_window = self          # <--- 设置 main_window 引用
@@ -467,6 +470,7 @@ class MainWindow(QMainWindow):
         dev.active_graph_controller = controller
 
         ui.show()
+
     def refresh_ports(self):
         self.combo_ports.clear()
         all_ports = serial.tools.list_ports.comports()
@@ -526,6 +530,18 @@ class MainWindow(QMainWindow):
         ui.show()
         # 加载数据（需在窗口显示后执行，确保 UI 已完全初始化）
         QTimer.singleShot(50, lambda: controller._load_csv_file(file_path))
+
+    def open_bend_graph(self):
+        """打开当前设备选项卡的喷管弯曲历史曲线窗口"""
+        current_tab = self.tabs.currentWidget()
+        if not current_tab:
+            QMessageBox.warning(self, "提示", "没有打开任何设备，请先添加串口设备。")
+            return
+        # 调用 DeviceTab 中的 open_bend_graph 方法
+        if hasattr(current_tab, 'open_bend_graph'):
+            current_tab.open_bend_graph()
+        else:
+            QMessageBox.warning(self, "提示", "当前设备选项卡不支持弯曲历史曲线功能。")
 
     def open_3d_viewer(self):
 

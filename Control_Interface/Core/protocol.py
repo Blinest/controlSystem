@@ -1,87 +1,171 @@
-def parse_data(self, data):
-    self.recv_buffer.extend(data)
-    if len(self.recv_buffer) > 1024:
-        self.recv_buffer.clear()
-        return
-    while len(self.recv_buffer) >= 5:
-        if self.recv_buffer[0] != 0xBB:
-            self.recv_buffer.pop(0)
-            continue
-        func = self.recv_buffer[1]
-        d_len = self.recv_buffer[2]
-        if d_len > 255 or d_len < 0:
-            self.recv_buffer.pop(0)
-            continue
-        f_len = 3 + d_len + 1
-        if len(self.recv_buffer) < f_len:
-            break
-        frame = self.recv_buffer[:f_len]
-        self.recv_buffer = self.recv_buffer[f_len:]
-        checksum_calc = sum(frame[:-1]) & 0xFF
-        checksum_recv = frame[-1]
-        if func == 0x02:
-            payload = frame[3:-1]
-            if len(payload) >= 2:
-                esp_m, esp_s = payload[0], payload[1]
-                needs_rebuild = False
-                if esp_m != self.num_m:
-                    self.num_m = esp_m
-                    needs_rebuild = True
-                if esp_s != self.num_s:
-                    self.num_s = esp_s
-                    needs_rebuild = True
-                if needs_rebuild:
-                    self.rebuild_cards()
-                offset = 2
-                new_motor = []
-                new_states = []
-                for j in range(esp_m):
-                    if offset + 7 <= len(payload):
-                        x, y, z = struct.unpack_from('>hhh', payload, offset)
-                        offset += 6
-                        state = payload[offset]
-                        offset += 1
-                        new_motor.append([x/100, y/100, z/100])
-                        new_states.append(state)
-                    else:
-                        break
-                self.update_filter_buffers_count()   # 确保缓冲区数量匹配
-                filtered_motor = []
-                for idx, (pos, vel, acc) in enumerate(new_motor):
-                    fpos, fvel, facc = self.apply_filters_to_motor(idx, pos, vel, acc)
-                    filtered_motor.append([fpos, fvel, facc])
-                self.motor_data = filtered_motor
-                self.motor_states = new_states
+# protocol.py
+import struct
+from collections import deque
+from typing import List, Optional, Tuple
 
-                new_sensor = []
-                for j in range(esp_s):
-                    if offset + 6 <= len(payload):
-                        x, y, z = struct.unpack_from('>hhh', payload, offset)
-                        offset += 6
-                        new_sensor.append([x/100, y/100, z/100])
-                    else:
-                        break
-                while len(new_sensor) < self.num_s:
-                    new_sensor.append([0.0, 0.0, 0.0])
+# ===================== 数据类 =====================
+class MotorData:
+    __slots__ = ('pos', 'vel', 'acc', 'status')
+    def __init__(self, pos: float, vel: float, acc: float, status: int):
+        self.pos = pos      # mm
+        self.vel = vel      # mm/s
+        self.acc = acc      # mm/s²
+        self.status = status  # 0:停止, 1:运行
 
-                filtered_sensor = []
-                for idx, (pitch, roll, yaw) in enumerate(new_sensor):
-                    fp, fr, fy = self.apply_filters_to_sensor(idx, pitch, roll, yaw)
-                    filtered_sensor.append([fp, fr, fy])
-                self.sensor_data = filtered_sensor
+class SensorData:
+    __slots__ = ('pitch', 'roll', 'yaw')
+    def __init__(self, pitch: float, roll: float, yaw: float):
+        self.pitch = pitch  # deg
+        self.roll = roll    # deg
+        self.yaw = yaw      # deg
 
+class DeviceStatus:
+    __slots__ = ('num_motors', 'num_sensors', 'motors', 'sensors',
+                 'scale', 'bend_angle', 'sys_state')
+    def __init__(self, num_motors: int, num_sensors: int,
+                 motors: List[MotorData], sensors: List[SensorData],
+                 scale: float, bend_angle: float, sys_state: int):
+        self.num_motors = num_motors
+        self.num_sensors = num_sensors
+        self.motors = motors
+        self.sensors = sensors
+        self.scale = scale
+        self.bend_angle = bend_angle
+        self.sys_state = sys_state
 
-                if offset + 5 <= len(payload):
-                    try:
-                        scale1 = struct.unpack_from('>h', payload, offset)[0] / 100
-                        offset += 2
-                        scale2 = struct.unpack_from('>h', payload, offset)[0] / 100
-                        offset += 2
-                        sys_state = payload[offset]
-                        self.scale_data = scale1
-                        self.bend_angle = scale2
-                    except Exception:
-                        pass
+# ===================== 滤波器 =====================
+class DataFilter:
+    """中值滤波 + 限幅滤波"""
+    def __init__(self, window_size: int = 3, max_change_rate: dict = None):
+        self.window_size = window_size
+        self.max_change = max_change_rate or {
+            'pos': 20.0, 'vel': 50.0, 'acc': 100.0, 'angle': 30.0
+        }
+        self._motor_buffers = []   # 每个电机 [pos_queue, vel_queue, acc_queue]
+        self._sensor_buffers = []  # 每个传感器 [pitch_queue, roll_queue, yaw_queue]
+        self._prev_motor = []      # 上一次滤波后的值，用于限幅
+        self._prev_sensor = []
 
-                self.area_change = self.scale_data
-                self.update_ui()
+    def _median(self, queue: deque, new_val: float) -> float:
+        queue.append(new_val)
+        if len(queue) > self.window_size:
+            queue.popleft()
+        if len(queue) < self.window_size:
+            return new_val
+        sorted_vals = sorted(queue)
+        return sorted_vals[len(sorted_vals)//2]
+
+    def _limit(self, old: float, new: float, max_change: float) -> float:
+        diff = new - old
+        if abs(diff) > max_change:
+            return old + (max_change if diff > 0 else -max_change)
+        return new
+
+    def apply_motor(self, idx: int, pos: float, vel: float, acc: float) -> Tuple[float, float, float]:
+        while len(self._motor_buffers) <= idx:
+            self._motor_buffers.append([deque(maxlen=self.window_size) for _ in range(3)])
+            self._prev_motor.append([0.0, 0.0, 0.0])
+        buffers = self._motor_buffers[idx]
+        prev = self._prev_motor[idx]
+
+        fpos = self._median(buffers[0], pos)
+        fvel = self._median(buffers[1], vel)
+        facc = self._median(buffers[2], acc)
+
+        fpos = self._limit(prev[0], fpos, self.max_change['pos'])
+        fvel = self._limit(prev[1], fvel, self.max_change['vel'])
+        facc = self._limit(prev[2], facc, self.max_change['acc'])
+
+        self._prev_motor[idx] = [fpos, fvel, facc]
+        return fpos, fvel, facc
+
+    def apply_sensor(self, idx: int, pitch: float, roll: float, yaw: float) -> Tuple[float, float, float]:
+        while len(self._sensor_buffers) <= idx:
+            self._sensor_buffers.append([deque(maxlen=self.window_size) for _ in range(3)])
+            self._prev_sensor.append([0.0, 0.0, 0.0])
+        buffers = self._sensor_buffers[idx]
+        prev = self._prev_sensor[idx]
+
+        fpitch = self._median(buffers[0], pitch)
+        froll  = self._median(buffers[1], roll)
+        fyaw   = self._median(buffers[2], yaw)
+
+        max_angle = self.max_change['angle']
+        fpitch = self._limit(prev[0], fpitch, max_angle)
+        froll  = self._limit(prev[1], froll,  max_angle)
+        fyaw   = self._limit(prev[2], fyaw,   max_angle)
+
+        self._prev_sensor[idx] = [fpitch, froll, fyaw]
+        return fpitch, froll, fyaw
+
+    def reset(self):
+        self._motor_buffers.clear()
+        self._sensor_buffers.clear()
+        self._prev_motor.clear()
+        self._prev_sensor.clear()
+
+# ===================== 协议解析器 =====================
+class ProtocolParser:
+    @staticmethod
+    def parse_frame(frame: bytes, apply_filter: bool = False, filter_obj: DataFilter = None) -> Optional[DeviceStatus]:
+        if len(frame) < 5 or frame[0] != 0xBB:
+            return None
+        func = frame[1]
+        if func != 0x02:   # 只处理状态反馈帧
+            return None
+        payload = frame[3:-1]
+        if len(payload) < 2:
+            return None
+
+        esp_m, esp_s = payload[0], payload[1]
+        offset = 2
+
+        motors = []
+        for _ in range(esp_m):
+            if offset + 7 > len(payload):
+                break
+            x, y, z = struct.unpack_from('>hhh', payload, offset)
+            offset += 6
+            status = payload[offset]
+            offset += 1
+            motors.append(MotorData(x/100.0, y/100.0, z/100.0, status))
+
+        sensors = []
+        for _ in range(esp_s):
+            if offset + 6 > len(payload):
+                break
+            pitch, roll, yaw = struct.unpack_from('>hhh', payload, offset)
+            offset += 6
+            sensors.append(SensorData(pitch/100.0, roll/100.0, yaw/100.0))
+
+        scale = bend = 0.0
+        sys_state = 0
+        if offset + 5 <= len(payload):
+            scale = struct.unpack_from('>h', payload, offset)[0] / 100.0
+            offset += 2
+            bend = struct.unpack_from('>h', payload, offset)[0] / 100.0
+            offset += 2
+            sys_state = payload[offset]
+
+        if apply_filter and filter_obj is not None:
+            filtered_motors = []
+            for i, m in enumerate(motors):
+                fp, fv, fa = filter_obj.apply_motor(i, m.pos, m.vel, m.acc)
+                filtered_motors.append(MotorData(fp, fv, fa, m.status))
+            motors = filtered_motors
+
+            filtered_sensors = []
+            for i, s in enumerate(sensors):
+                fp, fr, fy = filter_obj.apply_sensor(i, s.pitch, s.roll, s.yaw)
+                filtered_sensors.append(SensorData(fp, fr, fy))
+            sensors = filtered_sensors
+
+        return DeviceStatus(
+            num_motors=esp_m,
+            num_sensors=esp_s,
+            motors=motors,
+            sensors=sensors,
+            scale=scale,
+            bend_angle=bend,
+            sys_state=sys_state
+        )

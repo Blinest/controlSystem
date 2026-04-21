@@ -37,14 +37,13 @@ X_V2_result_t X_V2_parse_can(GlobalMotor *m, uint32_t can_ext_id,
     if (verify_cs && buf[len - 1] != 0x6B) return X_V2_ERR_CHECKSUM;
 
     uint8_t fc = buf[0];                     // 功能码
-    uint32_t data_len = len - 2;                  // 数据长度 = 总长 - 功能码 - 校验
+    uint32_t data_len = len - 2;             // 数据长度 = 总长 - 功能码 - 校验
     const uint8_t *data = &buf[1];           // 数据起始指针
 
     switch (fc) {
     case X_V2_FC_MOTOR_ENABLE:              // 0xF3, 回复帧: [F3 status cs]
         if (data_len >= 1) {
             m->state = (data[0] == 0x02) ? 1 : 0;   // 0x02 表示使能成功
-        	
         }
         break;
 

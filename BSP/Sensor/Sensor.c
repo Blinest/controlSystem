@@ -12,8 +12,8 @@
 #include "Sensor.h"
 #include "mpu9250.h"
 #include <stdio.h>
-
 #include "IMU.h"
+
 
 // 初始化全局传感器数组
 GlobalSensor global_sensor[SENSOR_NUM];
@@ -38,16 +38,12 @@ void sensor_init(void)
     // 1. 初始化传感器硬件
     // 这里调用实际的MPU9250初始化函数
     // mpu9250_init();
-    
+	IMU_Init();
     // 2. 配置传感器参数
     // 设置量程、采样率、滤波器等
     
     // 3. 初始化传感器数据结构
-    for (int i = 0; i < SENSOR_NUM; i++) {
-        global_sensor[i].x = 1;
-        global_sensor[i].y = 2;
-    	global_sensor[i].z = 3;
-    }
+
     
     printf("[SENSOR] 传感器初始化完成\n");
 }
@@ -60,45 +56,8 @@ void sensor_init(void)
  */
 void sensor_single_read(uint8_t sensor_id)
 {
-	// 发送指令进行读取
-    if (sensor_id < 1 || sensor_id > SENSOR_NUM) {
-        printf("[SENSOR] 错误: 无效的传感器ID %d\n", sensor_id);
-        return;
-    }
-    
-    printf("[SENSOR] 读取传感器%d数据\n", sensor_id);
-    
-    // 实际项目中应从硬件读取数据
-    // 这里使用模拟数据
-    int idx = sensor_id - 1;
-    
-    // 模拟从硬件读取数据
-    // uint8_t data[6];
-    // mpu9250_read_accel(data);
-    // int16_t raw_x = (data[0] << 8) | data[1];
-    // int16_t raw_y = (data[2] << 8) | data[3];
-    // int16_t raw_z = (data[4] << 8) | data[5];
-	// IMU 数据读取
-	IMU_single_read(1);
-    // 使用模拟数据
-    int16_t raw_x = simulated_sensor_data[idx][0];
-    int16_t raw_y = simulated_sensor_data[idx][1];
-    int16_t raw_z = simulated_sensor_data[idx][2];
-    
-    // 添加一些随机变化，模拟真实传感器
-    static int counter = 0;
-    raw_x += (counter % 10) - 5;
-    raw_y += ((counter + 3) % 10) - 5;
-    raw_z += ((counter + 7) % 10) - 5;
-    counter++;
-    
-    // 更新传感器结构体
-    global_sensor[idx].x = (uint16_t)raw_x;
-    global_sensor[idx].y = (uint16_t)raw_y;
-    global_sensor[idx].z = (uint16_t)raw_z;
-    
-    printf("[SENSOR] 传感器%d数据: X=%d, Y=%d, Z=%d\n", 
-           sensor_id, raw_x, raw_y, raw_z);
+    // IMU数据读取
+	IMU_single_read(sensor_id);
 }
 
 /**

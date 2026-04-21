@@ -19,11 +19,12 @@
 #include "usart.h"
 #include "Motor/Motor.h"
 #include "Sensor/Sensor.h"
-#include "../Common/XV2_cmd_parser.h"
-#include "Common/sensor_cmd_parser.h"
+#include "Common/XV2_cmd_parser.h"
 #include "Common/cmd_packer.h"
 #include "Common/can_driver.h"
 #include "CR/CR.h"
+#include "Sensor/WT_IMU.h"
+#include "Sensor/IMU.h"
 
 #define RX_BUF_SIZE 256
 
@@ -31,20 +32,21 @@ void StartDataTask(void *argument)
 {
     uint8_t rx_byte = 0;
     uint8_t tx_byte = 0;
-
-    
     for(;;)
     {
-
         // ====================================
         // 1. 数据采集流: 从外设 (CAN) 接收并处理
         // ====================================
        while (osMessageQueueGet(CmdDataQueueHandle, &rx_byte, NULL, 0) == osOK)
         {
        		// 传感器指令解析函数
-        	sensor_data_parser_feed_byte(rx_byte);
+        	// sensor_data_parser_feed_byte(rx_byte);
         	// Usart_SendString(&huart2, &rx_byte, 1);
+       		WitSerialDataIn(rx_byte);
         }
+    	global_sensor[0].x = sReg[Roll+0] / 32768.0f * 180.0f;
+    	global_sensor[0].y = sReg[Roll+1] / 32768.0f * 180.0f;
+    	global_sensor[0].z = sReg[Roll+2] / 32768.0f * 180.0f;
         
         // ====================================
         // 2. 数据发送流: 打包数据发送给上位机
@@ -59,7 +61,6 @@ void StartDataTask(void *argument)
             // 打包系统状态数据 (使用 static 以节省堆栈空间)
             static uint8_t packed_frame[128];
         	const uint8_t state = lqts.state;
-            
             const uint16_t frame_len = cmd_packer_pack_status_frame(packed_frame, global_motor, global_sensor, &lqts, state);
             
             // 发送到队列

@@ -14,7 +14,8 @@ void CAN_Driver_Init(void)
 
     // 启动CAN
     HAL_CAN_Start(&hcan);
-
+	// 创建CAN接收队列
+	CAN_RxQueueHandle = osMessageQueueNew(32, sizeof(CAN_Message_t), NULL);
 	// 配置一个简单的过滤器（接收所有消息）
 	CAN_FilterTypeDef filter = {0};
 	filter.FilterBank = 0;
@@ -99,6 +100,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 			if (global_motor[i].id == (RxHeader.ExtId >> 8))
 			{
 				X_V2_parse_can(&global_motor[i], RxHeader.ExtId, rx_data, RxHeader.DLC, true);
+				//Usart_SendString(&huart1, rx_data, 8);
 				break;
 			}
 		}
