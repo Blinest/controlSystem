@@ -1,12 +1,17 @@
-# ui/login_window.py
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
-                            QLabel, QCheckBox, QWidget, QScrollArea)
-from PyQt5.QtCore import pyqtSignal
+# ui/graph_window.py
 
+# Qt类
+from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
+                             QLabel, QCheckBox, QWidget, QScrollArea, QApplication,
+                             QDoubleSpinBox, QListWidget, QListWidgetItem)
+from PyQt5.QtCore import pyqtSignal, Qt
+
+# 工具类
 import pyqtgraph as pg
 import csv
 from datetime import datetime
-from Core.GraphController import GraphController
+import os
+
 
 class GraphWindowUI(QDialog):
     def __init__(self, title, is_motor=True, num_devices=1, parent=None, enable_auto_save=True, is_history_mode=False):

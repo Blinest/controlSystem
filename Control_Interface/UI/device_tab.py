@@ -19,6 +19,9 @@ from Core.auth import GlobalHistory
 # 自定义类
 from .widgets import AnimatedButton
 from Utils.filters import FilterProcessor
+
+# 工具类
+import time
 class DeviceTab(QWidget):
     def __init__(self, port_name, parent_logger, auth_service=None):
         super().__init__()

@@ -1,6 +1,7 @@
 # QT 组件类
 from PyQt5.QtWidgets import (QDialog, QApplication, QVBoxLayout,
-                             QWidget, QLabel, QFormLayout, QLineEdit, QHBoxLayout, QCheckBox, QPushButton)
+                             QWidget, QLabel, QFormLayout, QLineEdit, QHBoxLayout,
+                             QCheckBox, QPushButton, QMessageBox)
 
 # QT 核心类
 from PyQt5.QtCore import Qt

@@ -17,6 +17,7 @@ from .widgets import AnimatedButton
 from .Local3DViewer import Local3DViewer
 from .log_window import LoginWindow
 from Core.logger import default_log_manager as log_manager
+from Core.GraphController import GraphController
 
 # 工具类
 import os

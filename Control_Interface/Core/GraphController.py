@@ -1,5 +1,17 @@
-from PyQt5.QtCore import QObject
+# Qt类
+from PyQt5.QtCore import QObject, Qt, QTimer
+from PyQt5.QtWidgets import QFileDialog, QMessageBox, QMenu
 
+# 自定义类
+from UI.graph_window import HistoryFileDialog
+
+
+# 工具类
+import os
+import csv
+import bisect
+import unicodedata
+import pyqtgraph as pg
 class GraphController(QObject):
     def __init__(self, ui, is_history_mode=False):
         super().__init__()
