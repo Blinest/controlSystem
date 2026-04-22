@@ -40,8 +40,8 @@ class MainWindow(QMainWindow):
         # 根据分辨率自动动态设置窗口大小
         screen = QApplication.primaryScreen()
         size = screen.availableGeometry().size()
-        self.resize(size.width(), size.height())
-
+        new_height = min(size.height(), 800)
+        self.resize(size.width(), new_height)
         self.devices = {}
         self.auto_added_ports = set()
         self.auto_connect_timer = QTimer()

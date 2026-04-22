@@ -7,7 +7,7 @@ import struct
 import math
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QGridLayout,
                              QLabel, QComboBox, QDoubleSpinBox, QPushButton, QTabWidget,
-                             QFrame, QSplitter, QMessageBox, QGraphicsDropShadowEffect)
+                             QFrame, QSplitter, QMessageBox, QGraphicsDropShadowEffect, QAbstractSpinBox, QScrollArea)
 from PyQt5.QtCore import Qt, QTimer, pyqtSlot
 
 
@@ -70,10 +70,10 @@ class DeviceTab(QWidget):
         self.angle_deadband = 1            # 死区阈值（度），变化小于此值时不发送
         self.closed_loop_enabled = False
         self.closed_loop_target_angle = 0.0
-        self.pid = PID(Kp=1, Ki=0.01, Kd=0.01, dt=0.1, output_limits=(-70, 70), integral_limits=(-20, 20))
+        self.pid = PID(Kp=1, Ki=0.01, Kd=0.01, dt=0.2, output_limits=(-70, 70), integral_limits=(-20, 20))
         self.control_timer = QTimer()
         self.control_timer.timeout.connect(self.closed_loop_control)
-        self.control_timer.start(100)   # 控制周期 100ms，与 dt 一致
+        self.control_timer.start(200)   # 控制周期 200ms，与 dt 一致
 
         # 数据记录定时器
         self.history_timer = QTimer()
@@ -87,10 +87,15 @@ class DeviceTab(QWidget):
         main_layout = QHBoxLayout(self)
         splitter = QSplitter(Qt.Horizontal)
 
+        # 创建内容容器
+        content_widget = QWidget()
+        main_layout = QHBoxLayout(content_widget)   # 将原有布局应用到 content_widget
+        splitter = QSplitter(Qt.Horizontal)
+
         # 左侧面板
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
-
+        left_widget.setMaximumWidth(690)
         g_power = QGroupBox("1. 系统操作权限")
         l_power = QHBoxLayout(g_power)
 
@@ -123,21 +128,18 @@ class DeviceTab(QWidget):
         self.btn_home = AnimatedButton("⌂ 一键归中","#1E1E1E","#505050")
         self.btn_home.clicked.connect(self.send_home_command)
         l_shrink = QHBoxLayout()
-        self.spin_scale = QDoubleSpinBox()
-        self.spin_scale.setRange(75, 100)
-        self.spin_scale.setValue(75)
+        self.spin_scale = self._create_custom_spinbox(75, 100, 75, prefix="Scale: ", suffix='%')
         self.btn_shrink = AnimatedButton("⇲ 截面收缩","#00BCD4","#505050")
         self.btn_shrink.clicked.connect(self.send_scale_command)
-        l_shrink.addWidget(QLabel("Scale(%):"))
         l_shrink.addWidget(self.spin_scale)
         l_shrink.addWidget(self.btn_shrink)
 
         # 原弯曲控制布局
         l_bend = QHBoxLayout()
-        self.spin_bend = QDoubleSpinBox()
-        self.spin_bend.setRange(-70, 70)
-        self.spin_bend.setValue(0)
+        # 自定义带加减按钮的 SpinBox 容器
+        self.spin_bend = self._create_custom_spinbox(-70, 70, 0, prefix= "Angle: ", suffix="°")
         self.btn_bend = AnimatedButton("开环弯曲","#00BCD4","#505050")
+
         self.btn_bend.clicked.connect(lambda checked: self.send_bend_command())
 
         # 新增闭环弯曲按钮
@@ -145,22 +147,18 @@ class DeviceTab(QWidget):
         self.btn_closed_bend.clicked.connect(self.send_closed_loop_bend_command)
 
         h_pid = QHBoxLayout()
-        h_pid.addWidget(QLabel("Kp:"))
-        self.spin_kp = QDoubleSpinBox(); self.spin_kp.setRange(0, 10); self.spin_kp.setValue(0.5)
+
+        self.spin_kp = self._create_custom_spinbox(0, 10, 0.5, prefix="kp: ", step=0.1)   # 可添加 step 参数自行扩展
         h_pid.addWidget(self.spin_kp)
-        h_pid.addWidget(QLabel("Ki:"))
-        self.spin_ki = QDoubleSpinBox(); self.spin_ki.setRange(0, 10); self.spin_ki.setValue(0.1)
+        self.spin_ki = self._create_custom_spinbox(0, 10, 0, prefix="ki: ", step=0.01)
         h_pid.addWidget(self.spin_ki)
-        h_pid.addWidget(QLabel("Kd:"))
-        self.spin_kd = QDoubleSpinBox(); self.spin_kd.setRange(0, 10); self.spin_kd.setValue(0.05)
+        self.spin_kd = self._create_custom_spinbox(0, 10, 0, prefix="kd: ",step=0.01)
         h_pid.addWidget(self.spin_kd)
         btn_apply_pid = AnimatedButton("应用PID参数", "#1E1E1E","#505050")
         btn_apply_pid.clicked.connect(self.apply_pid_params)
         h_pid.addWidget(btn_apply_pid)
         l_quick.addLayout(h_pid)
 
-
-        l_bend.addWidget(QLabel("Angle(deg):"))
         l_bend.addWidget(self.spin_bend)
         l_bend.addWidget(self.btn_bend)
         l_bend.addWidget(self.btn_closed_bend)   # 添加新按钮
@@ -172,21 +170,9 @@ class DeviceTab(QWidget):
         g_addr = QGroupBox("3. 电机控制")
         f_addr = QGridLayout(g_addr)
         self.cb_motor_id = QComboBox()
-        self.spin_m_pos = QDoubleSpinBox()
-        self.spin_m_pos.setRange(-500, 500)
-        self.spin_m_pos.setPrefix("位移: ")
-        self.spin_m_pos.setValue(40)
-        self.spin_m_pos.setSuffix(" mm")
-        self.spin_m_vel = QDoubleSpinBox()
-        self.spin_m_vel.setRange(-500, 500)
-        self.spin_m_vel.setPrefix("速度: ")
-        self.spin_m_vel.setValue(10)
-        self.spin_m_vel.setSuffix(" mm/s")
-        self.spin_m_acc = QDoubleSpinBox()
-        self.spin_m_acc.setRange(-500, 500)
-        self.spin_m_acc.setPrefix("加速度: ")
-        self.spin_m_acc.setValue(0)
-        self.spin_m_acc.setSuffix(" mm/s^2")
+        self.spin_m_pos = self._create_custom_spinbox(-80, 80, 0, prefix="位移：", suffix='mm')
+        self.spin_m_vel = self._create_custom_spinbox(-20, 20, 10, prefix="速度: ", suffix=" mm/s")
+        self.spin_m_acc = self._create_custom_spinbox(-10, 10, 10, prefix="加速度: ", suffix=" mm/s^2")
         self.btn_send_m =  AnimatedButton("发至电机","#00BCD4","#505050")
         self.btn_send_m.clicked.connect(self.send_motor)
         f_addr.addWidget(QLabel("电机ID:"), 0, 0)
@@ -218,8 +204,10 @@ class DeviceTab(QWidget):
         left_layout.addWidget(g_sensor)
         left_layout.addStretch()
 
+
         # 右侧看板
         right_widget = QWidget()
+        right_widget.setMaximumWidth(580)
         self.right_layout = QVBoxLayout(right_widget)
         self.tabs = QTabWidget()
         tab_all = QWidget()
@@ -282,12 +270,12 @@ class DeviceTab(QWidget):
         hbox_area = QHBoxLayout()
 
         self.target_area_card, self.target_area_val = self.create_flat_card(
-            "目标喷嘴截面面积缩放比(%)", "0.00", "#107C10"
+            "目标截面面积缩放比(%)", "0.00", "#107C10"
         )
         hbox_area.addWidget(self.target_area_card)
 
         self.current_area_card, self.current_area_val = self.create_flat_card(
-            "当前喷嘴截面面积缩放比(%)", "0.00", "#107C10"
+            "当前截面面积缩放比(%)", "0.00", "#107C10"
         )
         hbox_area.addWidget(self.current_area_card)
 
@@ -332,6 +320,57 @@ class DeviceTab(QWidget):
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 3)
         main_layout.addWidget(splitter)
+
+        # 创建滚动区域，将 content_widget 放入其中
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setWidget(content_widget)
+        scroll_area.setMaximumHeight(750)   # 限制整体高度不超过 750px
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)   # 水平滚动按需显示
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)     # 垂直滚动按需显示
+
+        # 触摸友好的滚动条样式（同时设置垂直和水平）
+        scroll_area.setStyleSheet("""
+            /* 垂直滚动条样式 */
+            QScrollBar:vertical {
+                background: #e0e0e0;
+                width: 30px;
+                border-radius: 15px;
+            }
+            QScrollBar::handle:vertical {
+                background: #aaa;
+                min-height: 60px;
+                border-radius: 15px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #666;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+            
+            /* 水平滚动条样式 */
+            QScrollBar:horizontal {
+                background: #e0e0e0;
+                height: 30px;
+                border-radius: 15px;
+            }
+            QScrollBar::handle:horizontal {
+                background: #aaa;
+                min-width: 60px;
+                border-radius: 15px;
+            }
+            QScrollBar::handle:horizontal:hover {
+                background: #666;
+            }
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+                width: 0px;
+            }
+        """)
+        # 将滚动区域设置为 DeviceTab 的主布局
+        self.setLayout(QVBoxLayout())
+        self.layout().addWidget(scroll_area)
+
         self.rebuild_cards()
 
     def update_single_monitor_labels(self):
@@ -714,16 +753,16 @@ class DeviceTab(QWidget):
             return
 
         try:
-            pos = int(self.spin_m_pos.value() * 100)
-            vel = int(self.spin_m_vel.value() * 100)
-            acc = int(self.spin_m_acc.value() * 100)
+            pos = int(self.spin_m_pos.spin.value() * 100)
+            vel = int(self.spin_m_vel.spin.value() * 100)
+            acc = int(self.spin_m_acc.spin.value() * 100)
 
             # 更新目标值（确保列表长度足够）
             while len(self.motor_target) < self.num_m:
                 self.motor_target.append([0.0, 0.0, 0.0])
 
             if m_id <= len(self.motor_target):
-                self.motor_target[m_id-1] = [self.spin_m_pos.value(), self.spin_m_vel.value(), self.spin_m_acc.value()]
+                self.motor_target[m_id-1] = [self.spin_m_pos.spin.value(), self.spin_m_vel.spin.value(), self.spin_m_acc.spin.value()]
 
             self.update_ui()
 
@@ -820,7 +859,7 @@ class DeviceTab(QWidget):
             return
 
         try:
-            self.target_area_change = int(self.spin_scale.value())
+            self.target_area_change = int(self.spin_scale.spin.value())
             count = 1
             special_addr = 0xFD
             direction = 1
@@ -848,7 +887,7 @@ class DeviceTab(QWidget):
 
         # 确定目标角度
         if angle_deg is None:
-            target_angle = self.spin_bend.value()
+            target_angle = self.spin_bend.spin.value()
         else:
             target_angle = angle_deg
 
@@ -877,7 +916,7 @@ class DeviceTab(QWidget):
 
         if not self.closed_loop_enabled:
             # 启动闭环控制
-            self.closed_loop_target_angle = self.spin_bend.value()
+            self.closed_loop_target_angle = self.spin_bend.spin.value()
             self.pid.reset()
             self.last_sent_angle = None          # 重置记录
             self.closed_loop_enabled = True
@@ -913,10 +952,10 @@ class DeviceTab(QWidget):
         self.last_sent_angle = target_angle
 
     def apply_pid_params(self):
-        self.pid.Kp = self.spin_kp.value()
-        self.pid.Ki = self.spin_ki.value()
-        self.pid.Kd = self.spin_kd.value()
-        self.logger(f"PID参数已更新: Kp={self.pid.Kp}, Ki={self.pid.Ki}, Kd={self.pid.Kd}", port=self.port_name)
+        self.pid.Kp = self.spin_kp.spin.value()
+        self.pid.Ki = self.spin_ki.spin.value()
+        self.pid.Kd = self.spin_kd.spin.value()
+        self.logger(f"PID参数已更新: Kp={self.pid.Kp:.2f}, Ki={self.pid.Ki:.2f}, Kd={self.pid.Kd:.2f}", port=self.port_name)
 
     # ------------------ 核心：数据解析（调用后端）------------------
     @pyqtSlot(bytes)
@@ -1145,3 +1184,85 @@ class DeviceTab(QWidget):
             self.bend_graph_controller.window.update_data(
                 self.hist_bend_time, self.hist_bend_target, self.hist_bend_current
             )
+
+    #----------辅助函数----------------#
+    def _create_custom_spinbox(self, min_val, max_val, default, prefix='', suffix='', step=1.0):
+        """创建带自定义 +/- 按钮的 SpinBox 组合控件"""
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+
+        spin = QDoubleSpinBox()
+        spin.setRange(min_val, max_val)
+        spin.setValue(default)
+        if prefix:
+            spin.setPrefix(prefix)
+        if suffix:
+            spin.setSuffix(suffix)
+        spin.setSingleStep(step)
+
+        spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        spin.setStyleSheet("""
+            QDoubleSpinBox {
+                min-height: 34px;
+                font-size: 10pt;
+                font-weight: bold;
+                border: 2px solid #b0b0b0;
+                border-radius: 10px;
+                background: white;
+                padding-right: 5px;
+            }
+            QDoubleSpinBox:focus {
+                border-color: #0078D7;
+            }
+        """)
+
+        btn_plus = QPushButton("+")
+        btn_plus.setFixedSize(34, 34)
+        btn_plus.setCursor(Qt.PointingHandCursor)
+        btn_plus.setStyleSheet("""
+            QPushButton {
+                background-color: #f2f2f2;
+                border: 2px solid #b0b0b0;
+                border-radius: 5px;
+                font-size: 10pt;
+                font-weight: bold;
+                color: #333;
+            }
+            QPushButton:hover {
+                background-color: #e0e0e0;
+            }
+            QPushButton:pressed {
+                background-color: #c0c0c0;
+            }
+        """)
+        btn_plus.clicked.connect(lambda: spin.stepUp())
+
+        btn_minus = QPushButton("−")
+        btn_minus.setFixedSize(34, 34)
+        btn_minus.setCursor(Qt.PointingHandCursor)
+        btn_minus.setStyleSheet("""
+            QPushButton {
+                background-color: #f2f2f2;
+                border: 2px solid #b0b0b0;
+                border-radius: 5px;
+                font-size: 10pt;
+                font-weight: bold;
+                color: #333;
+            }
+            QPushButton:hover {
+                background-color: #e0e0e0;
+            }
+            QPushButton:pressed {
+                background-color: #c0c0c0;
+            }
+        """)
+        btn_minus.clicked.connect(lambda: spin.stepDown())
+
+        layout.addWidget(spin)
+        layout.addWidget(btn_plus)
+        layout.addWidget(btn_minus)
+
+        container.spin = spin
+        return container

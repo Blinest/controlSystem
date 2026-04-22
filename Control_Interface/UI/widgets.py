@@ -19,6 +19,7 @@ class AnimatedButton(QPushButton):
                 background-color: {color};
                 border-radius: 6px;
                 padding: 8px 16px;
+                margin: 5px 20px 5px 20px;
                 font-weight: bold;
                 color: white;
                 border: none;
