@@ -1,11 +1,9 @@
 /**
- *上层控制实现，用于处理上层指令解析和执行，提供电机控制和传感器数据读取等功能
+ *上层控制实现，用于完成顶层喷管的弯曲与截面变化
  *功能包括：
- *1. 电机控制：基于运动学的电机控制
- *2. 传感器数据读取
- *3. 指令解析：解析上层指令，执行相应的操作，如控制电机、读取传感器数据等
- *4. 样机控制：根据指令控制样机的运动，如弯曲等
- *5. 错误处理：处理指令解析错误、通信错误等情况，确保系统稳定运行
+ *1. 喷管弯曲控制与前馈补偿
+ *2. 喷管截面变化控制
+ *3. 喷管初始参数设定
  */
 
 #include "CR.h"
@@ -18,9 +16,9 @@
 
 
 #define LQTS_THETA1_MAX 60
-#define LQTS_THETA1_MIN -40
+
 #define LQTS_THETA2_MAX 60
-#define LQTS_THETA2_MIN -40
+
 #define LQTS_ANGLE_RANGE 30
 #define pi 3.1415926535
 
@@ -41,35 +39,25 @@ LQTS lqts;
 
 void LQTS_init(void)
 {
-    lqts.arm_params[0] = (ArmParams){
-        .L = 200, // 臂体长度
-        .tendon_preload = 16.0, // 预紧力，不考虑
-        .friction_coeff = 0.1, // 摩擦系数，无张力反馈，不考虑
-        .backbone_stiffness = 1000.0, // 弯曲刚度
-        .material_damping = 0.05, // 材料阻尼
-        .calibrate_offset = {0.01, 0, 0}, // 零点偏移
+    lqts.arm_params = (ArmParams){
+        .L = 400, // 喷管长度
+        // .tendon_preload = 16.0, // 预紧力，不考虑
+        // .friction_coeff = 0.1, // 摩擦系数，无张力反馈，不考虑
+        // .backbone_stiffness = 1000.0, // 弯曲刚度，不考虑
+        // .material_damping = 0.05, // 材料阻尼，不考虑
+        // .calibrate_offset = {0.01, 0, 0}, // 零点偏移，不考虑
         .direction_gain = {0.95, 1.75, 0.8, 1.75} // 方向补偿(urdl)
     };
 
-    lqts.arm_params[1] = (ArmParams){
-        .L = 200,
-        .tendon_preload = 8.0,// 预紧力，不考虑
-        .friction_coeff = 0.1,// 摩擦系数，无张力反馈，不考虑
-        .backbone_stiffness = 400.0,// 弯曲刚度
-        .material_damping = 0.05,// 材料阻尼
-        .calibrate_offset = {0, 0, 0}, // 零点偏移
-        .direction_gain = {1.25, 0.95, 1.35, 1.15} // 方向补偿
-    };
-	lqts.operation_space.scale = 20;
-	lqts.joint_space.theta = 30;
+	lqts.operation_space.scale = 100;
+	lqts.joint_space.theta = 0;
     lqts.parameter.r = 80; // 肌腱与中心孔距离 80mm
     motor_init();
 	sensor_init();
 }
 
-// 用于控制喷管弯曲
 /**
- *
+ * @brief 用于控制喷管弯曲
  * @param seg :段
  * @param direction：方向 0,1
  * @param val
@@ -130,61 +118,43 @@ int direction_to_index(char direction) {
 }
 
 // 补偿模型：基于力矩平衡实现
-double tendonCompensation(int seg, char direction, double angle_deg)
-{
-    int dir_idx = direction_to_index(direction);
-    double angle_rad = angle_deg * pi / 180.0;
-    double dir_gain =  lqts.arm_params[seg-1].direction_gain[dir_idx];
-    double theta_ideal = angle_rad;
-    // 摩擦引起的角度损失，理论上与肌腱张力成正比，由于目前没有张力反馈，不进行张力补偿，
-    // double r = lqts.parameter.r / 1000;
-    // double friction_loss_rad = friction_torque / (bending_stiffness_Nm2 + 0.001)  * (1.0 - exp(-angle_rad)); // 使用指数函数平滑
+double tendonCompensation(int seg, char direction, double angle_deg) {
+	const double ANGLE_THRESH = 0.3;      // 几何补偿起始阈值 (rad)
+	const double GEO_SCALE = 0.15 / 1.2;  // 0.125
+	const double MAX_RATIO = 1.3;
+	const double MIN_RATIO = 0.7;
 
-    //材料弹性引起的角度损失，考虑弹性恢复力矩，目前不需要考虑
-    //double elastic_coeff = (lqts.arm_params[seg-1].backbone_stiffness / (lqts.arm_params[seg-1].L* lqts.arm_params[seg-1].L));
-    //double elastic_loss = elastic_coeff * angle_rad * lqts.arm_params[seg-1].material_damping;
+	int dir_idx = direction_to_index(direction);
+	double angle_rad = angle_deg * M_PI / 180.0;
+	double dir_gain = lqts.arm_params.direction_gain[dir_idx];
 
-    // 大角度时的几何非线性补偿
-    // 当弯曲时，肌腱的有效力臂会减小：R_eff = R * cos(theta/2)
-    double geometric_factor = 1.0;
-    if (angle_rad > 0.3) { // 大约17度以上开始考虑
-    // 使用平滑过渡，避免突变
-        double t = (angle_rad - 0.3) / 1.2; // 归一化到[0,1]，假设最大90度=1.57弧度
+	// 基础补偿角度
+	double theta_comp = angle_rad * dir_gain;
 
-        geometric_factor = 1.0 + 0.15 * t * (1.0 - cos(angle_rad));
-    }
-    // 重力补偿
-    double gravity_factor = 1.0;
-    if (direction == 'u') {
-        // 向上弯曲，对抗重力，需要额外补偿
-        gravity_factor = 1.0 + 0.08 * (1.0 - cos(angle_rad));
-    } else if (direction == 'd') {
-        // 向下弯曲，重力辅助，可以减少补偿
-        gravity_factor = 1.0 - 0.03 * (1.0 - cos(angle_rad));
-    }
+	// 几何非线性补偿（大角度）
+	if (angle_rad > ANGLE_THRESH) {
+		double cos_theta = cos(angle_rad);
+		theta_comp *= (1.0 + GEO_SCALE * (angle_rad - ANGLE_THRESH) * (1.0 - cos_theta));
+	}
 
+	// 重力补偿
+	double delta_cos = 1.0 - cos(angle_rad);
+	if (direction == 'u') {
+		theta_comp *= (1.0 + 0.08 * delta_cos);
+	} else if (direction == 'd') {
+		theta_comp *= (1.0 - 0.03 * delta_cos);
+	}
 
-    double theta_compensated = theta_ideal * dir_gain * geometric_factor * gravity_factor;
+	// 限幅
+	double min_allowed = MIN_RATIO * angle_rad;
+	double max_allowed = MAX_RATIO * angle_rad;
+	theta_comp = fmin(fmax(theta_comp, min_allowed), max_allowed);
 
-    double max_ratio = 1.3;
-    double min_ratio = 0.7;
-
-    double min_allowed = min_ratio * angle_rad;
-    double max_allowed = max_ratio * angle_rad;
-
-    if (theta_compensated < min_allowed) {
-        theta_compensated = min_allowed;
-    }
-    else if (theta_compensated > max_allowed) {
-        theta_compensated = max_allowed;
-
-    }
-    return  theta_compensated;
+	return theta_comp;
 }
 
-// 用于控制截面面积收缩
 /**
- *
+ * @brief 用于控制截面面积收缩
  * @param direction 1正
  * @param val 目前的取值范围为 50.0f-100.0f，百分数
  */
@@ -221,10 +191,8 @@ void scale_squared(uint8_t direction, float val)
 }
 
 /**
- *
+ * @brief: 带补偿的臂体弯曲函数
  * @param seg
- *
- * /
  * @param direction ：弯曲方向：urdl
  * @param val ：弯曲角度: deg
  * @param g_u ：向上补偿

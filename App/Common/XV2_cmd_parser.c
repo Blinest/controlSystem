@@ -1,6 +1,5 @@
 /**
- * X_V2_V5.0 指令解析器 — Demo (Motor结构体版)
- * 编译: gcc -o demo main.c -Wall -Wextra -std=c11
+ * X_V2_V5.0 指令解析器
  */
 #include <stdio.h>
 #include "XV2_cmd_parser.h"

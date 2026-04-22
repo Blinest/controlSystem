@@ -5,7 +5,7 @@
  * 负责将全局结构体中的数据打包成数据包，发送给上位机
  * 
  * @date 2026-03-30
- * @author Psyduck
+ * @author blin
  */
 
 #ifndef __CMD_PACKER_H

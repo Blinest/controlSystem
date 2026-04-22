@@ -5,7 +5,7 @@
  * 负责解析外设（传感器）反馈的指令，更新全局结构体
  * 
  * @date 2026-03-30
- * @author Psyduck
+ * @author blin
  */
 
 #include "sensor_cmd_parser.h"

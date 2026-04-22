@@ -5,7 +5,7 @@
  * 负责解析上位机发送的指令，更新全局结构体，并分发给下位机
  * 
  * @date 2026-03-30
- * @author Psyduck
+ * @author blin
  */
 
 #ifndef __PC_CMD_PARSER_H

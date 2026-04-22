@@ -134,22 +134,11 @@ void motor_custom_control(uint8_t count, uint8_t *params);
 void motor_full_control(uint8_t addr, uint8_t dir, float dist, float velocity, float acceleration);
 
 // 新增函数 - 添加于2026-03-27 by Psyduck
-void motor_error_handler(uint8_t addr, uint8_t error_code);
 void motor_auto_calibrate(uint8_t addr);
 void motor_status_check(void);
 
 float motor_angle_to_displacement(uint8_t motor_index, float angle);
 float motor_displacement_to_angle(uint8_t motor_index, float displacement);
-
-
-
-// 历史记录和突变检测函数
-void motor_history_init(uint8_t motor_id);
-uint8_t motor_check_change_with_history(uint8_t motor_id, float velocity, 
-                                        float acceleration, float position, 
-                                        uint32_t current_time);
-void motor_reset_error_count(uint8_t motor_id);
-uint8_t motor_get_error_count(uint8_t motor_id);
 
 extern GlobalMotor global_motor[MOTOR_NUM];
 extern MotorFeedback motor_feedback[MOTOR_NUM];

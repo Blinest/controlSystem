@@ -7,11 +7,6 @@
  * @date 2026-03-30
  * @author blin
  */
-
-// 引入 freertos
-#include "FreeRTOS.h"
-#include "task.h"
-
 #include "pc_cmd_parser.h"
 #include "Motor/Motor.h"
 #include "Sensor/Sensor.h"
@@ -24,8 +19,6 @@
 #include "cmd_packer.h"
 
 
-// 引用外部队列
-//extern osMessageQueueId_t CmdCtrlQueueHandle;
 
 /* 帧头定义 */
 #define FRAME_HEAD_MOTOR      0xAA    /* 电机指令帧头 */
@@ -160,13 +153,10 @@ static void pc_cmd_parse_and_execute(void)
                         float theta = (float)((int16_t)((s_ctrlBuf[4] << 8) | s_ctrlBuf[5])) / 100.0f; // 角度θ
                         float phi = (float)((int16_t)((s_ctrlBuf[6] << 8) | s_ctrlBuf[7])) / 100.0f;   // 角度φ
                         
-
-                        
                         // 计算肌腱长度变化
                         float deltaL[4] = {0};
                     	// 调用运动学模型并执行控制指令
                     	motor_kinematic_control(calculate_L(R, theta, phi , deltaL), R, theta, phi, deltaL);
-
                     }
                     break;
                     

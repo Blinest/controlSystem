@@ -6,7 +6,7 @@
  * 假设使用MPU9250作为主要传感器
  * 
  * @date 2026-04-02
- * @author Psyduck
+ * @author blin
  */
 
 #include "Sensor.h"

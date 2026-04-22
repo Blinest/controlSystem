@@ -38,12 +38,8 @@ void CAN_Driver_Start(void);
 // 发送函数
 void CAN_SendCmd(CAN_HandleTypeDef *hcan, uint8_t *cmd, uint8_t len);
 
-
 // 接收函数
 uint8_t CAN_Driver_Receive(CAN_Message_t* msg);
-
-
-
 
 // 队列句柄
 extern osMessageQueueId_t CAN_RxQueueHandle;

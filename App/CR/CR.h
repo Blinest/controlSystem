@@ -45,7 +45,7 @@ typedef struct LQTS
 	JointSpace joint_space;
 	OperationSpace operation_space;
 	CR_Parameter parameter;
-	ArmParams arm_params[2];
+	ArmParams arm_params;
 	bool state;
 } LQTS;
 

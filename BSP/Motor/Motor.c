@@ -25,6 +25,7 @@
 // 创建电机与电机反馈数据结构体
 MotorFeedback motor_feedback[MOTOR_NUM];
 GlobalMotor global_motor[MOTOR_NUM];
+
 //电机初始化函数
 void motor_init()
 {
@@ -39,95 +40,23 @@ void motor_init()
 		global_motor[i].stepper_motor.current_vel = 10;
 		global_motor[i].vel_max = 120; // 满足指标要求
 		global_motor[i].current_acc = 0; // 由于位移量较小，为提高响应速度，直接启动，不做加减速处理 (0-255)
-
-		// 初始化历史记录 (防止信号干扰检测)
-		motor_history_init(i);
 	}
-	
-	printf("[MOTOR] 电机初始化完成，限制条件已启用\n");
 }
-// 单电机使能函数
+
+/**
+ *
+ * @param addr : 电机地址
+ * @param enable : 电机是否使能
+ */
+
 void motor_enable(uint8_t addr,bool enable)
 {
 	// 更新电机状态，(电机使能状态 0x02)
 	X_V2_En_Control(addr, enable, 0);
 }
 
-// 错误处理函数（增强版，支持限制条件错误）
-void motor_error_handler(uint8_t addr, uint8_t error_code)
-{
-    for (int i = 0; i < MOTOR_NUM; i++)
-    {
-        if (global_motor[i].id == addr)
-        {
-            // 记录错误信息
-            global_motor[i].state = 0xEE; // 错误状态
-            
-            // 根据错误代码采取不同措施
-            switch(error_code)
-            {
-                case 0x01: // 通信超时
-                    printf("[MOTOR] 电机%d通信超时\n", addr);
-                    // 尝试重新使能电机建立连接
-                    X_V2_En_Control(addr,1,0);
-                    break;
-                    
-                case 0x02: // 过流保护
-                    printf("[MOTOR] 电机%d过流保护\n", addr);
-                    // 紧急停止所有电机
-                    motor_stop_all();
-                    break;
-                    
-                case 0x03: // 位置超限
-                    printf("[MOTOR] 电机%d位置超限\n", addr);
-                    // 重置位置参数到安全位置
-                    global_motor[i].current_pos = 0;
-                    global_motor[i].target_pos = 0;
-                    global_motor[i].stepper_motor.current_pos = 0;
-                    global_motor[i].stepper_motor.target_pos = 0;
-                    break;
-                    
-                case 0x04: // 限制条件错误
-                    printf("[MOTOR] 电机%d限制条件错误\n", addr);
-                    // 不执行动作，只记录错误
-                    // 可以增加错误计数，达到阈值后采取行动
-                    break;
-                    
-                case 0x05: // 参数突变错误
-                    printf("[MOTOR] 电机%d参数突变错误\n", addr);
-                    // 重置历史记录，重新开始
-                    motor_reset_error_count(i);
-                    break;
-                    
-                case 0x06: // 信号干扰检测
-                    printf("[MOTOR] 电机%d检测到信号干扰\n", addr);
 
-                    break;
-                    
-                default:
-                    printf("[MOTOR] 电机%d未知错误: 0x%02X\n", addr, error_code);
-                    // 未知错误，记录日志
-                    break;
-            }
-            
-            // 更新最后响应时间（标记为错误时间）
-            global_motor[i].last_response_time = HAL_GetTick();
-            
-            // 增加错误计数
-            uint8_t error_count = motor_get_error_count(i);
-            if (error_count >= MOTOR_ERROR_COUNT_MAX) {
-                printf("[MOTOR] 电机%d错误次数过多(%d)，进入保护模式\n", addr, error_count);
-                // 可以进入安全模式，如降低速度限制等
-                global_motor[i].vel_max *= 0.5f; // 降低最大速度
-            }
-            
-            break;
-        }
-    }
-    // send_error_notification(addr, error_code);
-}
-
-// 电机参数自动校准函数
+// 电机参数自动校准函数，后续加入
 void motor_auto_calibrate(uint8_t addr)
 {
     for (int i = 0; i < MOTOR_NUM; i++)
@@ -158,6 +87,8 @@ void motor_auto_calibrate(uint8_t addr)
         }
     }
 }
+
+
 /**
   * @brief 启动步进电机，并达到指定位置（带限制条件）
   * @param idx: 电机索引
@@ -208,13 +139,36 @@ void motor_run(int idx, float vel, float target, uint8_t snf) {
 	// 	Usart_SendString(&huart1, (uint8_t*)"ERR_FMT\r\n", 9);
 	// }
 	// 直通限速位置模式
-	X_V2_Bypass_Pos_LV_Control(global_motor[idx].id, dir, vel_rpm_abs, angle_abs, 1, snf);
+	// X_V2_Bypass_Pos_LV_Control(global_motor[idx].id, dir, vel_rpm_abs, angle_abs, 1, snf);
 	// X_V2_Pos_Control(global_motor[idx].id, dir, vel_rpm_abs, 0, clk, 1, snf);
+	// 加速度和减速度 (RPM/s)，根据实际系统调整
+	uint16_t acc = 500;   // 加速斜率
+	uint16_t dec = 500;   // 减速斜率
 
+	// 使用梯形曲线加减速位置模式
+	X_V2_Traj_Pos_Control(global_motor[idx].id, dir, acc, dec, vel_rpm_abs, angle_abs, 1, snf);
 
 }
 
-// 电机紧急停止函数
+/**
+ * @brief 速度模式驱动电机（用于外部位置环）
+ * @param idx       电机索引
+ * @param vel_rpm   目标速度 (RPM)，可为正或负，内部自动处理方向
+ * @param acc_rpm_s 加速度 (RPM/s)
+ */
+void motor_run_velocity_mode(uint8_t idx, float vel_rpm, uint16_t acc_rpm_s) {
+	uint8_t dir = (vel_rpm >= 0) ? 0 : 1;
+	float abs_vel = fabsf(vel_rpm);
+	// 使用限电流版本可选
+	X_V2_Vel_Control(global_motor[idx].id, dir, acc_rpm_s, abs_vel, false);
+	// 记录当前目标速度
+	global_motor[idx].target_vel = vel_rpm;
+}
+
+/**
+ * 多电机停止函数
+ *
+ */
 void motor_stop_all()
 {
 	for(int i = 0; i < MOTOR_NUM; i++) {
@@ -223,7 +177,13 @@ void motor_stop_all()
 	}
 }
 
-// 单电机控制函数（带限制条件，绝对位置控制）
+/**
+ * @brief 单电机控制函数（绝对位置控制）
+ * @param idx : 电机索引号
+ * @param direction ：电机旋转方向
+ * @param distance ：步进电机移动距离 mm
+ * @param vel ：步进电机位移速度 mm/s
+ */
 void motor_single_control(uint8_t idx, uint8_t direction, float distance, float vel)
 {
 	// 位置换算，0正1负
@@ -306,7 +266,14 @@ void motor_sync_control(uint8_t count, uint8_t start_idx, float distance[])
 	HAL_Delay(10);
 }
 
-// 基于运动学的多电机控制函数（带限制条件）
+/**
+ *
+ * @param kinematic : 运动学函数，接入不同运动学模型
+ * @param R : 半径 mm
+ * @param theta : 弯曲角 rad
+ * @param phi : 旋转角 rad
+ * @param deltaL : 变化长度 mm
+ */
 void motor_kinematic_control (Kinematic kinematic, uint8_t R, float theta, float phi, float deltaL[])
 {
 	// ==================== 计算肌腱长度变化 ====================
@@ -464,42 +431,6 @@ void motor_status_check(void)
     	HAL_Delay(1); // 延时等待响应
     }
 }
-
-/**
- * @brief 电机信号干扰检测函数
- * 
- * 检测可能的信号干扰，如参数突变、无效值等
- */
-uint8_t motor_signal_interference_check(uint8_t motor_id, float velocity, float acceleration, float position)
-{
-    int idx = (motor_id >= MOTOR_ID && motor_id < MOTOR_ID + MOTOR_NUM) ? (motor_id - MOTOR_ID) : 0;
-    
-    // 1. 检查数值有效性
-    if (isnan(velocity) || isinf(velocity) ||
-        isnan(acceleration) || isinf(acceleration) ||
-        isnan(position) || isinf(position)) {
-        return 0x06; // 信号干扰检测
-    }
-    
-    // 2. 检查突变
-    uint32_t current_time = HAL_GetTick();
-    uint8_t change_error = motor_check_change_with_history(idx, velocity, acceleration, position, current_time);
-    if (change_error != MOTOR_LIMIT_OK) {
-        return 0x05; // 参数突变错误
-    }
-    
-    // 3. 检查范围（比正常限制更严格，用于干扰检测）
-    if (fabsf(velocity) > MOTOR_MAX_VELOCITY_RPM * 1.2f) { // 允许20%余量
-        return 0x06; // 信号干扰检测
-    }
-    
-    if (fabsf(acceleration) > MOTOR_MAX_ACCELERATION_MM_S2 * 1.2f) {
-        return 0x06; // 信号干扰检测
-    }
-    
-    return 0x00; // 正常
-}
-
 
 /**
  * @brief 完整电机控制函数
