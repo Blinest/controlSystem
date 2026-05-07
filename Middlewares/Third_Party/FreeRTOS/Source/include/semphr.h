@@ -641,7 +641,7 @@ typedef QueueHandle_t SemaphoreHandle_t;
  * This macro can be used from an ISR, however taking a semaphore from an ISR
  * is not a common operation.  It is likely to only be useful when taking a
  * counting semaphore when an interrupt is obtaining an object from a resource
- * pool (when the semaphore count indicates the number of Resources available).
+ * pool (when the semaphore count indicates the number of resources available).
  *
  * @param xSemaphore A handle to the semaphore being taken.  This is the
  * handle returned when the semaphore was created.
@@ -954,13 +954,13 @@ typedef QueueHandle_t SemaphoreHandle_t;
  *
  * 2) Resource management.
  *
- *    In this usage scenario the count value indicates the number of Resources
+ *    In this usage scenario the count value indicates the number of resources
  *    available.  To obtain control of a resource a task must first obtain a
  *    semaphore - decrementing the semaphore count value.  When the count value
- *    reaches zero there are no free Resources.  When a task finishes with the
+ *    reaches zero there are no free resources.  When a task finishes with the
  *    resource it 'gives' the semaphore back - incrementing the semaphore count
  *    value.  In this case it is desirable for the initial count value to be
- *    equal to the maximum count value, indicating that all Resources are free.
+ *    equal to the maximum count value, indicating that all resources are free.
  *
  * @param uxMaxCount The maximum count value that can be reached.  When the
  *        semaphore reaches this value it can no longer be 'given'.
@@ -1033,13 +1033,13 @@ typedef QueueHandle_t SemaphoreHandle_t;
  *
  * 2) Resource management.
  *
- *    In this usage scenario the count value indicates the number of Resources
+ *    In this usage scenario the count value indicates the number of resources
  *    available.  To obtain control of a resource a task must first obtain a
  *    semaphore - decrementing the semaphore count value.  When the count value
- *    reaches zero there are no free Resources.  When a task finishes with the
+ *    reaches zero there are no free resources.  When a task finishes with the
  *    resource it 'gives' the semaphore back - incrementing the semaphore count
  *    value.  In this case it is desirable for the initial count value to be
- *    equal to the maximum count value, indicating that all Resources are free.
+ *    equal to the maximum count value, indicating that all resources are free.
  *
  * @param uxMaxCount The maximum count value that can be reached.  When the
  *        semaphore reaches this value it can no longer be 'given'.

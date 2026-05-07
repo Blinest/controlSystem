@@ -18,6 +18,7 @@ from .Local3DViewer import Local3DViewer
 from .log_window import LoginWindow
 from Core.logger import default_log_manager as log_manager
 from Core.GraphController import GraphController
+from UI.styles import get_main_window_style
 
 # 工具类
 import os
@@ -32,7 +33,7 @@ class MainWindow(QMainWindow):
     def __init__(self, auth_service=None):
         super().__init__()
         self.auth_service = auth_service  # 保存认证服务引用
-        self.setWindowTitle("LQTS喷管控制界面")
+        self.setWindowTitle("空中水母控制界面")
         # 设置窗口标志，确保最大化窗口可用
         self.setWindowFlags(self.windowFlags() | Qt.WindowMaximizeButtonHint)
 
@@ -40,8 +41,9 @@ class MainWindow(QMainWindow):
         # 根据分辨率自动动态设置窗口大小
         screen = QApplication.primaryScreen()
         size = screen.availableGeometry().size()
-        new_height = min(size.height(), 800)
-        self.resize(size.width(), new_height)
+        new_height = min(size.height(), 1000)
+        new_width = min(size.width(), 1500)
+        self.resize(new_width, new_height)
         self.devices = {}
         self.auto_added_ports = set()
         self.auto_connect_timer = QTimer()
@@ -78,11 +80,11 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self.btn_manual_add)
         toolbar.addSeparator()
         toolbar.addAction("📈 电机反馈数据曲线", lambda: self.open_graph('motor'))
-        toolbar.addAction("📉 IMU反馈数据曲线", lambda: self.open_graph('sensor'))
+        toolbar.addAction("📉 弯曲传感器反馈数据曲线", lambda: self.open_graph('sensor'))
         toolbar.addSeparator()
 
-        # 喷管弯曲历史曲线
-        toolbar.addAction("📊 喷管弯曲历史曲线", self.open_bend_graph)
+        # 空中水母弯曲历史曲线
+        toolbar.addAction("📊 空中水母弯曲数据曲线", self.open_bend_graph)
         toolbar.addSeparator()
 
         # 日志管理按钮 - 只有管理员可见
@@ -124,56 +126,17 @@ class MainWindow(QMainWindow):
         self.log_splitter = QSplitter(Qt.Horizontal)
         self.text_log = QTextEdit()
         self.text_log.setReadOnly(True)
-        self.text_log.setStyleSheet("background-color: #a7a8aa; border: 3px solid #E0E0E0;")
+        self.text_log.setStyleSheet("background-color: #fdfdfd; border: 1px solid #cfe2f2; color: #1e1e1e;")
         self.text_raw = QTextEdit()
         self.text_raw.setReadOnly(True)
-        self.text_raw.setStyleSheet("background-color: #1E1E1E; color: #4EC9B0; font-family: Consolas; border: 3px solid #1E1E1E;")
+        self.text_raw.setStyleSheet("background-color: #f5f9ff; color: #1e6f9f; font-family: Consolas; border: 1px solid #cfe2f2;")
         self.text_raw.hide()
         self.log_splitter.addWidget(self.text_log)
         self.log_splitter.addWidget(self.text_raw)
         log_layout.addWidget(self.log_splitter)
         dock_log.setWidget(log_widget)
         self.addDockWidget(Qt.BottomDockWidgetArea, dock_log)
-
-        self.setStyleSheet("""
-            QMainWindow, QWidget { background: #d9d9d6; font-family: '微软雅黑 Control_Interface'; }
-            QPushButton { padding: 8px; border: 3px solid black; border-radius: 4px; background: #53565b;}
-            QPushButton[class="primary"] { border-radius: 25px;background: #0078D7; color:#a7a8aa; border: none;}
-            QPushButton[class="danger"] { border-radius: 15px; padding: 4px 12px;background: #D13438; color: #a7a8aa; border: none; font-weight: bold;font-size:10pt;}
-            QPushButton[class="success"] { border-radius: 15px;background: #107C10; color: #a7a8aa; border: none; font-weight: bold;font-size:10pt;}
-            QPushButton[class="emergency"] {border-radius: 15px;background-color: red;color: #a7a8aa; font-weight: bold;font-size: 10pt;border: none;}
-            QPushButton[class="emergency"]:hover { background-color: #A80000;}
-            QPushButton[class="emergency"]:pressed {background-color: #8A0000;}
-            QPushButton[class="page-btn"] {background-color: grey; color: white; font-weight: bold; border: 3px solid #ccc;border-radius: 4px;padding: 5px 10px;}
-            QGroupBox { border: 3px solid white; border-radius: 5px; margin-top: 15px; padding: 5px; font-weight:bold;}
-            QComboBox { padding: 4px; border: 2px solid white; border-radius: 3px; background: #d9d9d6; color: #333;}
-            QComboBox QAbstractItemView { background-color: white; color: white; border-radius: 12px;selection-background-color: #0078D7; selection-color: #FFFFFF; }
-            QMessageBox {
-                    background-color: #d9d9d6;
-                    color: white;
-                    border: 1px solid #e0e0e0;
-                    border-radius: 12px;
-                    padding: 8px;
-                    border-right: 4px solid #d0d0d0;
-                    border-bottom: 4px solid #d0d0d0;
-                }
-            QMessageBox QPushButton:default {
-                background-color: #53565b;
-                color: white;
-                border: none;
-                border-radius: 12px;
-                }
-            QStatusBar {
-                background-color: #d7d2cb;
-                color: #333;
-                font-weight: bold;
-                border-top: 2px solid #ccc;
-            }
-            QStatusBar::item {
-                border: none;
-            }
-        """)
-
+        self.setStyleSheet(get_main_window_style())
         # 显示欢迎信息（使用 QTimer 延迟显示，确保窗口已完全加载）
         if self.auth_service and self.auth_service.is_logged_in():
             username = self.auth_service.get_current_user()
@@ -201,32 +164,13 @@ class MainWindow(QMainWindow):
 
             # 用户标签
             user_label = QLabel(f"{role_icon} {username} ({self.role_text})")
-            user_label.setStyleSheet("""
-                font-weight: bold; 
-                color: #0078D7; 
-                padding: 5px 15px;
-                font-size: 12pt;
-                background-color: rgba(255, 255, 255, 0.3);
-                border-radius: 15px;
-                margin-right: 5px;
-            """)
+            user_label.setObjectName("toolbarUserLabel")
             toolbar.addWidget(user_label)
 
             # 登出按钮
             btn_logout = QPushButton("🚪 登出")
-            btn_logout.setProperty("class", "page-btn")
-            btn_logout.setStyleSheet("""
-                QPushButton {
-                    background-color: #555;
-                    color: white;
-                    padding: 5px 15px;
-                    border-radius: 4px;
-                    font-size: 12pt;
-                }
-                QPushButton:hover {
-                    background-color: #D13438;
-                }
-            """)
+            btn_logout.setObjectName("toolbarLogoutButton")
+
             btn_logout.clicked.connect(self.logout)
             toolbar.addWidget(btn_logout)
 
@@ -263,20 +207,20 @@ class MainWindow(QMainWindow):
         print(f"DEBUG: _show_welcome 被调用, username={username}")  # 调试信息
 
         # 1. 更新窗口标题
-        self.setWindowTitle(f"LQTS喷管控制界面 - 当前用户: {username}")
+        self.setWindowTitle(f"空中水母控制界面 - 当前用户: {username}")
 
         # 2. 状态栏显示
         self.statusBar().showMessage(f"👤 当前用户: {username} | ✅ 就绪", 0)
 
         # 3. 日志窗口显示
         self.log("=" * 50, level="INFO")
-        self.log(f"🎉 欢迎使用 LQTS 喷管控制平台", level="INFO")
+        self.log(f"🎉 欢迎使用空中水母控制平台", level="INFO")
         self.log(f"👤 当前登录用户: {username}({self.role_text})", level="INFO")
         self.log(f"🕐 登录时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", level="INFO")
         self.log("=" * 50, level="INFO")
 
         # 4. 创建浮动提示
-        self._show_toast(f"{username}, 欢迎使用 LQTS 控制平台！")
+        self._show_toast(f"{username}, 欢迎使用空中水母控制平台！")
 
     def _show_toast(self, message, duration=2000):
         """显示短暂的提示信息"""
@@ -371,6 +315,13 @@ class MainWindow(QMainWindow):
         else:
             self.text_raw.hide()
 
+        # 通知当前设备选项卡 Debug 状态变化
+        current_tab = self.tabs.currentWidget()
+        if current_tab and hasattr(current_tab, 'on_debug_changed'):
+            current_tab.on_debug_changed(state == Qt.Checked)
+        else:
+            print("No current tab with on_debug_changed")  # 调试输出
+
     def auto_check_target_port(self):
         all_ports = serial.tools.list_ports.comports()
         # 读取所有已有的端口，然后将他们放在数组中
@@ -415,10 +366,16 @@ class MainWindow(QMainWindow):
     def connect_port(self, port):
         if port in self.devices:
             return
-        dev_tab = DeviceTab(port, self.log)
+        dev_tab = DeviceTab(port, self.log, debug_check=self.chk_debug.isChecked)
         self.devices[port] = dev_tab
         self.tabs.addTab(dev_tab, f"📍 {port}")
         self.tabs.setCurrentWidget(dev_tab)
+
+        # 如果 Debug 模式已勾选，立即创建虚拟设备
+        if self.chk_debug.isChecked():
+            dev_tab.on_debug_changed(True)
+
+
         QTimer.singleShot(100, lambda: dev_tab.send_cmd(0xFE, "自动握手", "唤醒通信", is_motor=True))
 
     def add_device(self):
@@ -429,10 +386,14 @@ class MainWindow(QMainWindow):
         if port in self.devices:
             QMessageBox.warning(self, "提示", f"设备 {port} 已经添加")
             return
-        dev_tab = DeviceTab(port, self.log)
+        dev_tab = DeviceTab(port, self.log, debug_check=self.chk_debug.isChecked)
         self.devices[port] = dev_tab
         self.tabs.addTab(dev_tab, f"📍 {port}")
         self.tabs.setCurrentWidget(dev_tab)
+
+        if self.chk_debug.isChecked():
+            dev_tab.on_debug_changed(True)
+
         QTimer.singleShot(100, lambda: dev_tab.send_cmd(0xFE, "底层握手", "唤醒通信", is_motor=True))
 
     def close_device(self, index):
@@ -456,7 +417,7 @@ class MainWindow(QMainWindow):
             is_motor = True
             num_devices = dev.num_m
         else:
-            title = f"IMU反馈数据曲线图 ({dev.port_name})"
+            title = f"弯曲传感器反馈数据曲线图 ({dev.port_name})"
             is_motor = False
             num_devices = dev.num_s
 
@@ -522,17 +483,60 @@ class MainWindow(QMainWindow):
         log_window = LogManagerWindow(self)
         log_window.exec_()
 
-    def open_history_graph(self, file_path, is_motor):
+    def open_history_graph(self, file_path=None, is_motor=True):
+        """加载电机或传感器历史数据"""
+        if file_path is None:
+            # 弹出文件选择对话框
+            from PyQt5.QtWidgets import QFileDialog
+            data_dir = os.path.expanduser(f"~/.lqts/analyze_data/{'motor_data' if is_motor else 'sensor_data'}")
+            if not os.path.exists(data_dir):
+                os.makedirs(data_dir, exist_ok=True)
+            file_path, _ = QFileDialog.getOpenFileName(
+                self,
+                f"选择{'电机' if is_motor else '传感器'}历史数据文件",
+                data_dir,
+                "CSV文件 (*.csv)"
+            )
+            if not file_path:
+                return
         title = "历史数据 - " + os.path.basename(file_path)
-        ui = GraphWindowUI(title, is_motor=is_motor, num_devices=1, enable_auto_save=False, is_history_mode=True)
+        ui = GraphWindowUI(title, is_motor=is_motor, num_devices=1,
+                           enable_auto_save=False, is_history_mode=True)
         controller = GraphController(ui, is_history_mode=True)
         ui.set_controller(controller)
         ui.show()
-        # 加载数据（需在窗口显示后执行，确保 UI 已完全初始化）
         QTimer.singleShot(50, lambda: controller._load_csv_file(file_path))
 
+    def open_bend_history_graph(self):
+        """打开弯曲角度历史数据加载窗口（独立实现）"""
+        from UI.graph_window import BendGraphWindow, BendHistoryFileDialog
+        from Core.GraphController import BendGraphController
+
+        dialog = BendHistoryFileDialog(self)
+
+        def on_file_selected(file_path):
+            try:
+                # 可选：复用已有窗口（简单实现：每次新窗口）
+                win = BendGraphWindow(is_history_mode=True, enable_auto_save=False)
+                # 设置窗口标题为文件名
+                win.setWindowTitle(f"历史弯曲数据 - {os.path.basename(file_path)}")
+
+                controller = BendGraphController(win, data_provider=None)
+                win.set_controller(controller)
+
+                # 加载数据（如果失败，内部会弹错误框，不显示窗口）
+                controller.load_history_file(file_path)
+                win.show()
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"加载失败：{str(e)}")
+            finally:
+                dialog.accept()
+
+        dialog.file_selected.connect(on_file_selected)
+        dialog.exec_()
+
     def open_bend_graph(self):
-        """打开当前设备选项卡的喷管弯曲历史曲线窗口"""
+        """打开当前设备选项卡的喷管弯曲数据曲线窗口"""
         current_tab = self.tabs.currentWidget()
         if not current_tab:
             QMessageBox.warning(self, "提示", "没有打开任何设备，请先添加串口设备。")

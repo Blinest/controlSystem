@@ -80,7 +80,7 @@
                     function of ADC clock source frequency to remain below
                     this maximum frequency.
         (++) One clock setting is mandatory:
-             ADC clock (Core clock, also possibly conversion clock).
+             ADC clock (core clock, also possibly conversion clock).
              (+++) Example:
                    Into HAL_ADC_MspInit() (recommended code location) or with
                    other device clock parameters configuration:
@@ -573,7 +573,7 @@ HAL_StatusTypeDef HAL_ADC_Init(ADC_HandleTypeDef* hadc)
                tmp_sqr1             );
     
     /* Check back that ADC registers have effectively been configured to      */
-    /* ensure of no potential problem of ADC Core IP clocking.                */
+    /* ensure of no potential problem of ADC core IP clocking.                */
     /* Check through register CR2 (excluding bits set in other functions:     */
     /* execution control bits (ADON, JSWSTART, SWSTART), regular group bits   */
     /* (DMA), injected group bits (JEXTTRIG and JEXTSEL), channel internal    */

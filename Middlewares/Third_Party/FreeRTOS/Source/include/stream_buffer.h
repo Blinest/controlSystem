@@ -28,7 +28,7 @@
 /*
  * Stream buffers are used to send a continuous stream of data from one task or
  * interrupt to another.  Their implementation is light weight, making them
- * particularly suited for interrupt to task and Core to Core communication
+ * particularly suited for interrupt to task and core to core communication
  * scenarios.
  *
  * ***NOTE***:  Uniquely among FreeRTOS objects, the stream buffer

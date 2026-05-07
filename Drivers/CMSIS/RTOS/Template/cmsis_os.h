@@ -486,9 +486,9 @@ const osSemaphoreDef_t os_semaphore_def_##name = { 0 }
 #define osSemaphore(name)  \
 &os_semaphore_def_##name
  
-/// Create and Initialize a Semaphore object used for managing Resources.
+/// Create and Initialize a Semaphore object used for managing resources.
 /// \param[in]     semaphore_def semaphore definition referenced with \ref osSemaphore.
-/// \param[in]     count         number of available Resources.
+/// \param[in]     count         number of available resources.
 /// \return semaphore ID for reference by other functions or NULL in case of error.
 /// \note MUST REMAIN UNCHANGED: \b osSemaphoreCreate shall be consistent in every CMSIS-RTOS.
 osSemaphoreId osSemaphoreCreate (const osSemaphoreDef_t *semaphore_def, int32_t count);

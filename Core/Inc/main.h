@@ -37,10 +37,10 @@ extern "C" {
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
 // 创建并导出队列任务
-extern osMessageQueueId_t CmdQueueHandle;
 extern osMessageQueueId_t CmdCtrlQueueHandle;
 extern osMessageQueueId_t CmdDataQueueHandle;
 extern osMessageQueueId_t SensorMessageQueueHandle;
+extern osMessageQueueId_t MotorRxQueueHandle;
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/

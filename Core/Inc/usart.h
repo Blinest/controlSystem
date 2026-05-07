@@ -37,16 +37,16 @@ extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN Private defines */
+void MX_USART2_UART_Init(void);
+void MX_USART1_UART_Init(void);
 
 /* USER CODE END Private defines */
-
-void MX_USART1_UART_Init(void);
-void MX_USART2_UART_Init(void);
 
 /* USER CODE BEGIN Prototypes */
 void Usart_SendString(UART_HandleTypeDef* huart, unsigned char *str, unsigned short len);
 void UART1_Receive_Start();
 void UART2_Receive_Start();
+void UART1_TxSem_Init();
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus

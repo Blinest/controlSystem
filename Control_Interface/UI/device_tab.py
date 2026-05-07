@@ -2,184 +2,313 @@
 # 5. 设备选项卡
 # ==========================================
 
-# Qt类
 import struct
 import math
+import time
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QGridLayout,
                              QLabel, QComboBox, QDoubleSpinBox, QPushButton, QTabWidget,
                              QFrame, QSplitter, QMessageBox, QGraphicsDropShadowEffect, QAbstractSpinBox, QScrollArea)
 from PyQt5.QtCore import Qt, QTimer, pyqtSlot
 
-
 from Core.serial_worker import SerialWorker
 from Core.auth import GlobalHistory
 from Core.protocol import ProtocolParser, DataFilter
-# 自定义类
 from .widgets import AnimatedButton
 from Utils.controller import PID
-# 工具类
-import time
-class DeviceTab(QWidget):
-    def __init__(self, port_name, parent_logger, auth_service=None):
-        super().__init__()
-        self.auth_service = auth_service #添加权限控制
-        if self.auth_service and not self.auth_service.is_admin():
-            # 普通用户可能没有某些高级操作权限
-            # self.btn_cal.setEnabled(False)  # 例如禁用校准功能
-            pass
+from UI.styles import get_main_window_style, get_device_tab_extra_style
 
-        self.start_time = None   # 起始时间戳（None) 表示未初始化
-        self.port_name, self.logger = port_name, parent_logger
+
+class DeviceTab(QWidget):
+    def __init__(self, port_name, parent_logger, auth_service=None, debug_check=None):
+        super().__init__()
+        self.auth_service = auth_service
+
+        # ========== 基本属性 ==========
+        self.port_name = port_name
+        self.logger = parent_logger
+        self.debug_check = debug_check
+        self.serial_error = False
+        self.start_time = None
+
+        # ========== 串口通信与数据缓冲 ==========
         self.worker = SerialWorker(port_name)
         self.worker.signal_data.connect(self.parse_data)
         self.worker.signal_error.connect(self.handle_serial_error)
-        self.serial_error = False
-
         self.recv_buffer = bytearray()
+
+        # ========== 系统运行状态 ==========
         self.is_started = False
-        self.num_m, self.num_s = 0, 0
-        self.motor_data, self.sensor_data = [], []
-        self.motor_target = []
-        self.motor_states = []
-        self.scale_data = 100.0
+        self.closed_loop_enabled = False   # 闭环暂未使用，保留以备扩展
+        self.closed_loop_target_angle = 0.0
+
+        # ========== 电机与弯曲传感器数量及数据 ==========
+        self.num_m = 0
+        self.num_s = 0
+        self.motor_data = []          # 当前电机数据 [pos, vel, acc]
+        self.motor_target = []        # 目标值 [pos, vel, acc]
+        self.motor_states = []        # 电机运行状态 0/1
+        self.sensor_data = []         # 当前传感器数据 [pitch, roll, yaw]
+
+        # ========== 臂体弯曲角度（用于右侧看板显示） ==========
+        self.target_angle1 = 0.0
+        self.current_angle1 = 0.0
+        self.target_angle2 = 0.0
+        self.current_angle2 = 0.0
+
+        # 滤波相关
+        self.angle_filter_alpha = 0.3
+        self.filtered_bend_angle = 0.0
         self.current_bend_angle = 0.0
         self.current_area_change = 0.0
-        self.target_bend_angle = 0.0
-        self.target_area_change = 0.0
 
-        self.hist_bend_time = []       # 时间列表
-        self.hist_bend_target = []     # 目标角度列表
-        self.hist_bend_current = []    # 当前角度列表
-        self.bend_graph_window = None  # 弯曲曲线窗口实例
+        # ========== 历史数据缓存（曲线） ==========
+        self.hist_time = []
+        self.hist_motors = []
+        self.hist_sensors = []
+        self.hist_bend_time = []
+        self.hist_target1 = []
+        self.hist_current1 = []
+        self.hist_target2 = []
+        self.hist_current2 = []
+
+        # ========== UI 组件引用 ==========
+        self.m_page = 0
+        self.s_page = 0
+        self.cards_motor = []
+        self.cards_sensor = []
+        self.bend_graph_window = None
         self.bend_graph_controller = None
-
-        self.m_page, self.s_page = 0, 0
-        self.cards_motor, self.cards_sensor = [], []
-
-        self.plot_time = 0
-        self.hist_time, self.hist_motors, self.hist_sensors = [], [], []
         self.active_graph = None
+        self.active_type = None
+        self.active_graph_ui = None
+        self.active_graph_controller = None
 
-        # 创建滤波器
-        self.data_filter = DataFilter(window_size=3)
-        self.filtered_bend_angle = 0.0
-        self.angle_filter_alpha = 0.3   # 滤波系数
+        # ========== PID 闭环控制（保留结构，但不在界面暴露） ==========
+        self.pid = PID(
+            Kp=1, Ki=0.01, Kd=0.01, dt=0.2,
+            output_limits=(-70, 70), integral_limits=(-20, 20)
+        )
+        self.last_sent_angle = None
+        self.angle_deadband = 1
 
-        # 创建控制器
-        self.last_sent_angle = None          # 记录上次闭环发送的目标角度
-        self.angle_deadband = 1            # 死区阈值（度），变化小于此值时不发送
-        self.closed_loop_enabled = False
-        self.closed_loop_target_angle = 0.0
-        self.pid = PID(Kp=1, Ki=0.01, Kd=0.01, dt=0.2, output_limits=(-70, 70), integral_limits=(-20, 20))
+        # ========== 定时器 ==========
         self.control_timer = QTimer()
         self.control_timer.timeout.connect(self.closed_loop_control)
-        self.control_timer.start(200)   # 控制周期 200ms，与 dt 一致
+        self.control_timer.start(200)
 
-        # 数据记录定时器
         self.history_timer = QTimer()
         self.history_timer.timeout.connect(self.record_history)
-        self.history_timer.start(10) # 刷新率定义
+        self.history_timer.start(10)
 
+        # ========== 数据处理（滤波） ==========
+        self.data_filter = DataFilter(window_size=3)
+
+        # ========== 初始化界面并启动工作线程 ==========
         self.init_ui()
+        combined_style = get_main_window_style() + "\n" + get_device_tab_extra_style()
+        self.setStyleSheet(combined_style)
         self.worker.start()
 
     def init_ui(self):
         main_layout = QHBoxLayout(self)
         splitter = QSplitter(Qt.Horizontal)
 
-        # 创建内容容器
         content_widget = QWidget()
-        main_layout = QHBoxLayout(content_widget)   # 将原有布局应用到 content_widget
+        main_layout = QHBoxLayout(content_widget)
         splitter = QSplitter(Qt.Horizontal)
 
         # 左侧面板
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
-        left_widget.setMaximumWidth(690)
+        left_widget.setMaximumWidth(800)
+
+        # ---- 1. 系统操作权限 ----
         g_power = QGroupBox("1. 系统操作权限")
         l_power = QHBoxLayout(g_power)
 
-
-        self.btn_toggle = AnimatedButton("▶ 启动控制系统","#107C10", "#063A06")
-        self.btn_toggle.setCheckable(True) # 设置为可选中状态(开关模式)
-        # self.btn_toggle.setFixedSize(300, 100)
-
+        self.btn_toggle = AnimatedButton("▶ 启动控制系统", "#107C10", "#063A06")
+        self.btn_toggle.setCheckable(True)
         shadow = QGraphicsDropShadowEffect()
-
-        # 连接后状态改变为触发
-        self.btn_toggle.toggled.connect(self.sys_toggle)
         self.btn_toggle.setGraphicsEffect(shadow)
+        self.btn_toggle.toggled.connect(self.sys_toggle)
 
-        self.btn_stop = AnimatedButton("⏹紧急停止","red", "#A80000")
-        shadow = QGraphicsDropShadowEffect()
-        # shadow.setBlurRadius(15)      # 阴影模糊半径
-        # shadow.setOffset(20, 20)      # 阴影偏移量 (X, Y)
-        #shadow.setColor(Qt.black)      # 阴影颜色
-        self.btn_stop.setGraphicsEffect(shadow)
-        self.btn_stop.setProperty("class", "emergency")     # 使用自定义属性 emergency
+        self.btn_stop = AnimatedButton("⏹紧急停止", "red", "#A80000")
+        shadow2 = QGraphicsDropShadowEffect()
+        self.btn_stop.setGraphicsEffect(shadow2)
+        self.btn_stop.setProperty("class", "emergency")
         self.btn_stop.clicked.connect(self.sys_stop)
 
         l_power.addWidget(self.btn_toggle)
         l_power.addWidget(self.btn_stop)
         left_layout.addWidget(g_power)
-
-        g_quick = QGroupBox("2. 弯曲与截面收缩控制")
+        # ---- 2. 系统控制 ----
+        g_quick = QGroupBox("2. 系统控制")
         l_quick = QVBoxLayout(g_quick)
-        self.btn_home = AnimatedButton("⌂ 一键归中","#1E1E1E","#505050")
-        self.btn_home.clicked.connect(self.send_home_command)
-        l_shrink = QHBoxLayout()
-        self.spin_scale = self._create_custom_spinbox(75, 100, 75, prefix="Scale: ", suffix='%')
-        self.btn_shrink = AnimatedButton("⇲ 截面收缩","#00BCD4","#505050")
-        self.btn_shrink.clicked.connect(self.send_scale_command)
-        l_shrink.addWidget(self.spin_scale)
-        l_shrink.addWidget(self.btn_shrink)
+        l_quick.setSpacing(8)
+        l_quick.setContentsMargins(10, 10, 10, 10)
 
-        # 原弯曲控制布局
-        l_bend = QHBoxLayout()
-        # 自定义带加减按钮的 SpinBox 容器
-        self.spin_bend = self._create_custom_spinbox(-70, 70, 0, prefix= "Angle: ", suffix="°")
-        self.btn_bend = AnimatedButton("开环弯曲","#00BCD4","#505050")
+        # ---------- 第一行：一键归中 + 抓取控制（紧凑左对齐）----------
+        row1 = QHBoxLayout()
+        row1.setSpacing(0)
 
-        self.btn_bend.clicked.connect(lambda checked: self.send_bend_command())
+        self.btn_home = AnimatedButton("⌂ 一键归中", "#1E1E1E", "#505050")
+        self.btn_home.setFixedHeight(36)
+        row1.addWidget(self.btn_home)
+        row1.setSpacing(20)
+        # 抓取标签+输入框作为紧密小组
+        grab_group = QHBoxLayout()
+        grab_group.setSpacing(2)   # 标签与输入框紧紧挨着
 
-        # 新增闭环弯曲按钮
-        self.btn_closed_bend = AnimatedButton("闭环弯曲","#FF8C00","#B85C00")  # 橙色风格
-        self.btn_closed_bend.clicked.connect(self.send_closed_loop_bend_command)
+        grab_label = QLabel("抓取角度:")
+        grab_label.setStyleSheet("color: white; font-size: 14pt;font-weight: bold;")
+        grab_group.addWidget(grab_label)
 
-        h_pid = QHBoxLayout()
+        self.spin_grab_angle = QDoubleSpinBox()
+        self.spin_grab_angle.setRange(0, 90)
+        self.spin_grab_angle.setValue(30)
+        self.spin_grab_angle.setSuffix("°")
+        self.spin_grab_angle.setDecimals(1)
+        self.spin_grab_angle.setFixedWidth(80)
+        self.spin_grab_angle.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        self.spin_grab_angle.setStyleSheet("""
+            QDoubleSpinBox {
+                min-height: 34px;
+                font-size: 10pt;
+                font-weight: bold;
+                border: 1px solid #cfe2f2;
+                border-radius: 10px;
+                background: #2C3E50;
+                padding: 4px 8px;
+                color: white;
+            }
+            QDoubleSpinBox:focus {
+                border-color: #1e6f9f;
+            }
+        """)
+        grab_group.addWidget(self.spin_grab_angle)
+        row1.addLayout(grab_group)
 
-        self.spin_kp = self._create_custom_spinbox(0, 10, 0.5, prefix="kp: ", step=0.1)   # 可添加 step 参数自行扩展
-        h_pid.addWidget(self.spin_kp)
-        self.spin_ki = self._create_custom_spinbox(0, 10, 0, prefix="ki: ", step=0.01)
-        h_pid.addWidget(self.spin_ki)
-        self.spin_kd = self._create_custom_spinbox(0, 10, 0, prefix="kd: ",step=0.01)
-        h_pid.addWidget(self.spin_kd)
-        btn_apply_pid = AnimatedButton("应用PID参数", "#1E1E1E","#505050")
-        btn_apply_pid.clicked.connect(self.apply_pid_params)
-        h_pid.addWidget(btn_apply_pid)
-        l_quick.addLayout(h_pid)
+        row1.addSpacing(8)
 
-        l_bend.addWidget(self.spin_bend)
-        l_bend.addWidget(self.btn_bend)
-        l_bend.addWidget(self.btn_closed_bend)   # 添加新按钮
-        l_quick.addWidget(self.btn_home)
-        l_quick.addLayout(l_shrink)
-        l_quick.addLayout(l_bend)
+        self.btn_grab = AnimatedButton("⚫ 抓取", "#107C10", "#063A06")
+        self.btn_grab.setFixedHeight(36)
+        self.btn_reverse_grab = AnimatedButton("⚪ 反向抓取", "#D13438", "#6B1418")
+        self.btn_reverse_grab.setFixedHeight(36)
+        self.btn_grab.clicked.connect(self.grab)
+        self.btn_reverse_grab.clicked.connect(self.reverse_grab)
+
+        row1.addWidget(self.btn_grab)
+        row1.addWidget(self.btn_reverse_grab)
+        # 末尾不加 stretch，控件自然靠左，右侧不会出现大片空白
+        l_quick.addLayout(row1)
+
+        # ---------- 第二行：地址选择 1/2/3/4（紧凑排列，不加 stretch）----------
+        addr_layout = QHBoxLayout()
+        addr_layout.setSpacing(8)   # 各组之间的固定间距
+        self.addr_buttons = []
+        self.addr_spinboxes = []
+
+        switch_style = """
+        QPushButton {
+            background-color: #505050;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 12pt;
+            font-weight: bold;
+            min-width: 36px;
+            max-width: 36px;
+            min-height: 36px;
+            max-height: 36px;
+        }
+        QPushButton:checked {
+            background-color: #107C10;
+            color: white;
+        }
+        QPushButton:hover {
+            background-color: #6B1418;
+        }
+        QPushButton:checked:hover {
+            background-color: #0a5e0a;
+        }
+        """
+
+        for i in range(1, 5):
+            group = QHBoxLayout()
+            group.setSpacing(4)
+
+            btn = QPushButton(str(i))
+            btn.setCheckable(True)
+            btn.setStyleSheet(switch_style)
+            self.addr_buttons.append(btn)
+            group.addWidget(btn)
+
+            spin = QDoubleSpinBox()
+            spin.setRange(0, 90)
+            spin.setValue(30)
+            spin.setSuffix("°")
+            spin.setDecimals(1)
+            spin.setFixedWidth(80)
+            spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
+            spin.setStyleSheet("""
+                QDoubleSpinBox {
+                    min-height: 34px;
+                    font-size: 10pt;
+                    font-weight: bold;
+                    border: 1px solid #cfe2f2;
+                    border-radius: 10px;
+                    background: #2C3E50;
+                    padding: 4px 8px;
+                    color: white;
+                }
+                QDoubleSpinBox:focus {
+                    border-color: #1e6f9f;
+                }
+            """)
+            self.addr_spinboxes.append(spin)
+            group.addWidget(spin)
+
+            addr_layout.addLayout(group)
+            # 不再添加 stretch，四组自然靠左
+
+        l_quick.addLayout(addr_layout)
+
+        # ---------- 第三行：动作按钮（紧凑靠左）----------
+        action_layout = QHBoxLayout()
+        action_layout.setSpacing(10)
+
+        self.btn_forward = AnimatedButton("⬆ 正向弯曲", "#107C10", "#063A06")
+        self.btn_forward.setFixedHeight(38)
+        self.btn_release = AnimatedButton("⏺ 释放", "#D13438", "#6B1418")
+        self.btn_release.setFixedHeight(38)
+        self.btn_backward = AnimatedButton("⬇ 反向弯曲", "#0078D4", "#005A9E")
+        self.btn_backward.setFixedHeight(38)
+
+        self.btn_forward.clicked.connect(self.bend_forward)
+        self.btn_release.clicked.connect(self.bend_release)
+        self.btn_backward.clicked.connect(self.bend_backward)
+
+        action_layout.addWidget(self.btn_forward)
+        action_layout.addWidget(self.btn_release)
+        action_layout.addWidget(self.btn_backward)
+        # 不加 stretch，按钮自然排列在左侧
+        l_quick.addLayout(action_layout)
+
         left_layout.addWidget(g_quick)
-
+        # ---- 3. 电机控制 ----
         g_addr = QGroupBox("3. 电机控制")
         f_addr = QGridLayout(g_addr)
         self.cb_motor_id = QComboBox()
-        self.spin_m_pos = self._create_custom_spinbox(-80, 80, 0, prefix="位移：", suffix='mm')
-        self.spin_m_vel = self._create_custom_spinbox(-20, 20, 10, prefix="速度: ", suffix=" mm/s")
-        self.spin_m_acc = self._create_custom_spinbox(-10, 10, 10, prefix="加速度: ", suffix=" mm/s^2")
-        self.btn_send_m =  AnimatedButton("发至电机","#00BCD4","#505050")
+        self.spin_m_pos = self._create_custom_spinbox(-720, 720, 0, prefix="角度：", suffix='度')
+        self.spin_m_vel = self._create_custom_spinbox(-20, 20, 10, prefix="角速度: ", suffix=" rpm")
+        self.spin_m_acc = self._create_custom_spinbox(-10, 10, 10, prefix="角加速度: ", suffix=" ")
+        self.btn_send_m = AnimatedButton("发至电机", "#00BCD4", "#505050")
         self.btn_send_m.clicked.connect(self.send_motor)
         f_addr.addWidget(QLabel("电机ID:"), 0, 0)
         f_addr.addWidget(self.cb_motor_id, 0, 1)
         f_addr.addWidget(self.btn_send_m, 0, 2)
         self.motor_status_ball = QLabel("●")
-        self.motor_status_ball.setStyleSheet("color: red; font-size: 8pt;")
+        self.motor_status_ball.setStyleSheet("color: #c46b5b; font-size: 8pt;")
         f_addr.addWidget(self.motor_status_ball, 0, 3)
         self.cb_motor_id.currentIndexChanged.connect(self.update_motor_status_ball)
         f_addr.addWidget(self.spin_m_pos, 1, 0)
@@ -187,37 +316,33 @@ class DeviceTab(QWidget):
         f_addr.addWidget(self.spin_m_acc, 1, 2)
         left_layout.addWidget(g_addr)
 
-        g_sensor = QGroupBox("4. IMU数据监控")
+        # ---- 4. 弯曲传感器数据监控 ----
+        g_sensor = QGroupBox("4. 弯曲传感器数据监控")
         l_sensor = QVBoxLayout(g_sensor)
         self.cb_sensor_monitor = QComboBox()
         self.cb_sensor_monitor.currentIndexChanged.connect(self.update_sensor_monitor)
         h_sensor_line = QHBoxLayout()
-        h_sensor_line.addWidget(QLabel("IMU ID:"))
+        h_sensor_line.addWidget(QLabel("弯曲传感器 ID:"))
         h_sensor_line.addWidget(self.cb_sensor_monitor)
         l_sensor.addLayout(h_sensor_line)
-        self.btn_cal = AnimatedButton("IMU校准", "#1E1E1E","#505050")
-        self.btn_cal.clicked.connect(self.calibrate_sensor)
-        self.btn_read = AnimatedButton("读取IMU数据","#1E1E1E","#505050")
-        self.btn_read.clicked.connect(self.read_sensor_data)
-        l_sensor.addWidget(self.btn_cal)
-        l_sensor.addWidget(self.btn_read)
         left_layout.addWidget(g_sensor)
         left_layout.addStretch()
 
-
-        # 右侧看板
+        # ---- 右侧看板 ----
         right_widget = QWidget()
         right_widget.setMaximumWidth(580)
         self.right_layout = QVBoxLayout(right_widget)
         self.tabs = QTabWidget()
+
+        # 选项卡1：电机与弯曲传感器数据监控
         tab_all = QWidget()
         v_all = QVBoxLayout(tab_all)
         self.grid_m = QGridLayout()
         h_m_page = QHBoxLayout()
-        self.btn_m_prev = AnimatedButton("◀ 上一页", "grey","#505050")
+        self.btn_m_prev = AnimatedButton("◀ 上一页", "grey", "#505050")
         self.btn_m_prev.clicked.connect(lambda: self.change_page('m', -1))
         self.btn_m_prev.setProperty("class", "page-btn")
-        self.btn_m_next = AnimatedButton("下一页 ▶", "grey","#505050")
+        self.btn_m_next = AnimatedButton("下一页 ▶", "grey", "#505050")
         self.btn_m_next.clicked.connect(lambda: self.change_page('m', 1))
         self.btn_m_next.setProperty("class", "page-btn")
         self.lbl_m_page = QLabel("电机 1/1 页")
@@ -226,69 +351,58 @@ class DeviceTab(QWidget):
         h_m_page.addWidget(self.btn_m_prev)
         h_m_page.addWidget(self.lbl_m_page)
         h_m_page.addWidget(self.btn_m_next)
+
         self.grid_s = QGridLayout()
         h_s_page = QHBoxLayout()
-        self.btn_s_prev = AnimatedButton("◀ 上一页", "grey","#505050")
+        self.btn_s_prev = AnimatedButton("◀ 上一页", "grey", "#505050")
         self.btn_s_prev.clicked.connect(lambda: self.change_page('s', -1))
         self.btn_s_prev.setProperty("class", "page-btn")
-        self.btn_s_next = AnimatedButton("下一页 ▶", "grey","#505050")
+        self.btn_s_next = AnimatedButton("下一页 ▶", "grey", "#505050")
         self.btn_s_next.clicked.connect(lambda: self.change_page('s', 1))
         self.btn_s_next.setProperty("class", "page-btn")
-        self.lbl_s_page = QLabel("IMU 1/1 页")
+        self.lbl_s_page = QLabel("弯曲传感器 1/1 页")
         self.lbl_s_page.setProperty("class", "page-btn")
         self.lbl_s_page.setAlignment(Qt.AlignCenter)
         h_s_page.addWidget(self.btn_s_prev)
         h_s_page.addWidget(self.lbl_s_page)
         h_s_page.addWidget(self.btn_s_next)
+
         v_all.addLayout(h_m_page)
         v_all.addLayout(self.grid_m)
         v_all.addStretch()
         v_all.addLayout(h_s_page)
         v_all.addLayout(self.grid_s)
         v_all.addStretch()
-        self.tabs.addTab(tab_all, "👁 电机与IMU数据监控")
+        self.tabs.addTab(tab_all, "👁 电机与弯曲传感器数据监控")
 
+        # 选项卡2：柔性臂运动数据监控
         tab_bend = QWidget()
         v_bend = QVBoxLayout(tab_bend)
+        hbox_angle1 = QHBoxLayout()
+        self.target_angle1_card, self.target_angle1_val = self.create_flat_card(
+            "第一段目标角度 (deg)", "0.00", "#b5956b")
+        hbox_angle1.addWidget(self.target_angle1_card)
+        self.current_angle1_card, self.current_angle1_val = self.create_flat_card(
+            "第一段当前角度 (deg)", "0.00", "#b5956b")
+        hbox_angle1.addWidget(self.current_angle1_card)
+        v_bend.addLayout(hbox_angle1)
 
-        # --- 第一行：目标弯曲角度 + 当前弯曲角度 ---
-        hbox_angles = QHBoxLayout()
+        hbox_angle2 = QHBoxLayout()
+        self.target_angle2_card, self.target_angle2_val = self.create_flat_card(
+            "第二段目标角度 (deg)", "0.00", "#b5956b")
+        hbox_angle2.addWidget(self.target_angle2_card)
+        self.current_angle2_card, self.current_angle2_val = self.create_flat_card(
+            "第二段当前角度 (deg)", "0.00", "#b5956b")
+        hbox_angle2.addWidget(self.current_angle2_card)
+        v_bend.addLayout(hbox_angle2)
+        self.tabs.addTab(tab_bend, "🔧 柔性臂运动数据监控")
 
-        self.target_angle_card, self.target_angle_val = self.create_flat_card(
-            "目标弯曲角度(deg)", "0.00", "#D13438"
-        )
-        hbox_angles.addWidget(self.target_angle_card)
-
-        self.current_angle_card, self.current_angle_val = self.create_flat_card(
-            "当前弯曲角度(deg)", "0.00", "#D13438"
-        )
-        hbox_angles.addWidget(self.current_angle_card)
-
-        v_bend.addLayout(hbox_angles)
-
-        # --- 第二行：目标喷嘴面积 + 当前喷嘴面积 ---
-        hbox_area = QHBoxLayout()
-
-        self.target_area_card, self.target_area_val = self.create_flat_card(
-            "目标截面面积缩放比(%)", "0.00", "#107C10"
-        )
-        hbox_area.addWidget(self.target_area_card)
-
-        self.current_area_card, self.current_area_val = self.create_flat_card(
-            "当前截面面积缩放比(%)", "0.00", "#107C10"
-        )
-        hbox_area.addWidget(self.current_area_card)
-
-        v_bend.addLayout(hbox_area)
-
-        self.tabs.addTab(tab_bend, "🔧 LQTS喷管运动数据监控")
-
-        # 定点专门监测页面（修改部分）
+        # 选项卡3：定点监测
         tab_single = QWidget()
         v_single = QVBoxLayout(tab_single)
         h_sel = QHBoxLayout()
         self.cb_view_type = QComboBox()
-        self.cb_view_type.addItems(["定点监测: 电机", "定点监测: IMU"])
+        self.cb_view_type.addItems(["定点监测: 电机", "定点监测: 弯曲传感器"])
         self.cb_view_type.currentIndexChanged.connect(self.update_single_monitor_labels)
         self.cb_view_id = QComboBox()
         self.cb_view_id.currentIndexChanged.connect(lambda: self.update_ui())
@@ -296,23 +410,23 @@ class DeviceTab(QWidget):
         h_sel.addWidget(self.cb_view_id)
         h_sel.addStretch()
         v_single.addLayout(h_sel)
-        # 创建动态卡片
-        self.single_cards = []  # (title_label, value_label)
-        for default_title, default_color in [("位移 (mm)", "#D13438"), ("速度 (mm/s)", "#107C10"), ("加速度 (mm/s²)", "#0078D7")]:
+        self.single_cards = []
+        init_titles = ["角度 (度)", "转速 (rpm)", "角加速度 ()"]
+        for default_title in init_titles:
             card_frame = QFrame()
-            card_frame.setStyleSheet("QFrame { background: #d9d9d6; border: 3px solid white; border-radius: 10px; }")
+            card_frame.setObjectName("singleValueCard")
             card_layout = QHBoxLayout(card_frame)
             title_label = QLabel(default_title)
-            title_label.setStyleSheet("color: black; font-weight:bold; border:none; font-size:15pt;")
+            title_label.setObjectName("singleCardTitle")
             value_label = QLabel("0.00")
-            value_label.setStyleSheet(f"color: {default_color}; font-size: 15pt; font-weight: bold; border: none;")
+            value_label.setObjectName("singleCardValue")
             value_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             card_layout.addWidget(title_label)
             card_layout.addStretch()
             card_layout.addWidget(value_label)
             v_single.addWidget(card_frame)
             self.single_cards.append((title_label, value_label))
-        self.tabs.addTab(tab_single, "🎯 定点监测(电机与IMU)")
+        self.tabs.addTab(tab_single, "🎯 定点监测(电机与弯曲传感器)")
 
         self.right_layout.addWidget(self.tabs)
         splitter.addWidget(left_widget)
@@ -321,85 +435,37 @@ class DeviceTab(QWidget):
         splitter.setStretchFactor(1, 3)
         main_layout.addWidget(splitter)
 
-        # 创建滚动区域，将 content_widget 放入其中
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setWidget(content_widget)
-        scroll_area.setMaximumHeight(750)   # 限制整体高度不超过 750px
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)   # 水平滚动按需显示
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)     # 垂直滚动按需显示
-
-        # 触摸友好的滚动条样式（同时设置垂直和水平）
-        scroll_area.setStyleSheet("""
-            /* 垂直滚动条样式 */
-            QScrollBar:vertical {
-                background: #e0e0e0;
-                width: 30px;
-                border-radius: 15px;
-            }
-            QScrollBar::handle:vertical {
-                background: #aaa;
-                min-height: 60px;
-                border-radius: 15px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: #666;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-            
-            /* 水平滚动条样式 */
-            QScrollBar:horizontal {
-                background: #e0e0e0;
-                height: 30px;
-                border-radius: 15px;
-            }
-            QScrollBar::handle:horizontal {
-                background: #aaa;
-                min-width: 60px;
-                border-radius: 15px;
-            }
-            QScrollBar::handle:horizontal:hover {
-                background: #666;
-            }
-            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
-                width: 0px;
-            }
-        """)
-        # 将滚动区域设置为 DeviceTab 的主布局
+        scroll_area.setMaximumHeight(750)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.setLayout(QVBoxLayout())
         self.layout().addWidget(scroll_area)
 
         self.rebuild_cards()
 
+    # ---------- 更新单点监测标签 ----------
     def update_single_monitor_labels(self):
-        """根据定点监测类型更新卡片标题、颜色以及ID下拉框选项"""
         is_motor = (self.cb_view_type.currentIndex() == 0)
         if is_motor:
-            titles = ["位移 (mm)", "速度 (mm/s)", "加速度 (mm/s²)"]
-            colors = ["#D13438", "#107C10", "#0078D7"]
-            # 更新ID下拉框选项为电机ID
+            titles = ["角度 (deg)", "转速 (rpm)", "角加速度 ()"]
             self.update_single_monitor_ids(range(1, self.num_m + 1))
         else:
-            titles = ["Pitch (deg)", "Roll (deg)", "Yaw (deg)"]
-            colors = ["#D13438", "#107C10", "#0078D7"]
-            # 更新ID下拉框选项为IMU ID
+            titles = ["弯曲角(原始) (deg)", "弯曲角(滤波) (deg)", "编码值"]
             self.update_single_monitor_ids(range(1, self.num_s + 1))
         for i, (title_label, value_label) in enumerate(self.single_cards):
             title_label.setText(titles[i])
-            value_label.setStyleSheet(f"color: {colors[i]}; font-size: 15pt; font-weight: bold; border: none;")
         self.update_ui()
 
     def update_single_monitor_ids(self, ids_range):
-        """更新定点监测的ID下拉框选项，ids_range是一个可迭代的ID列表（如range(1, num+1)）"""
         current_id = self.cb_view_id.currentText()
         self.cb_view_id.blockSignals(True)
         self.cb_view_id.clear()
         id_list = [f"ID {i}" for i in ids_range]
         if id_list:
             self.cb_view_id.addItems(id_list)
-            # 尝试恢复之前选中的ID
             if current_id in id_list:
                 self.cb_view_id.setCurrentText(current_id)
             else:
@@ -408,42 +474,34 @@ class DeviceTab(QWidget):
             self.cb_view_id.addItem("无")
         self.cb_view_id.blockSignals(False)
 
+    # ---------- 卡片创建 ----------
     def create_motor_card(self, title, color):
         frame = QFrame()
         frame.setObjectName("motorCard")
-        frame.setStyleSheet("""
-            QFrame#motorCard { 
-                background: #d9d9d6; 
-                border: 1px solid white; 
-                border-radius: 6px;
-            }
-            QFrame#motorCard:hover {
-                border: 2px solid white;
-            }
-        """)
         main_layout = QVBoxLayout(frame)
-        main_layout.setContentsMargins(6, 6, 6, 6)
+        main_layout.setContentsMargins(8, 8, 8, 8)
         main_layout.setSpacing(10)
+
         top_widget = QWidget()
         top_layout = QHBoxLayout(top_widget)
         top_layout.setContentsMargins(0, 0, 0, 0)
         title_label = QLabel(title)
-        title_label.setStyleSheet("color: #333; font-weight: bold; font-size: 10pt; border: none;")
+        title_label.setObjectName("motorCardTitle")
         title_label.setAlignment(Qt.AlignCenter)
         top_layout.addWidget(title_label)
         top_layout.addStretch()
         state_ball = QLabel("●")
-        state_ball.setStyleSheet("color: #888; font-size: 8pt; border: none;")
+        state_ball.setObjectName("motorStateBall")
         top_layout.addWidget(state_ball)
         main_layout.addWidget(top_widget)
 
-        def create_block(block_name, unit, color):
+        def create_block(block_name, unit):
             block_widget = QWidget()
             block_layout = QVBoxLayout(block_widget)
             block_layout.setContentsMargins(0, 0, 0, 0)
             block_layout.setSpacing(4)
             title_lbl = QLabel(f"{block_name} ({unit})")
-            title_lbl.setStyleSheet(f"background-color: #d9d9d6;color: {color}; font-size: 10pt; font-weight: bold; border: none;")
+            title_lbl.setObjectName("motorBlockTitle")
             title_lbl.setAlignment(Qt.AlignCenter)
             block_layout.addWidget(title_lbl)
             value_widget = QWidget()
@@ -451,10 +509,10 @@ class DeviceTab(QWidget):
             value_layout.setContentsMargins(0, 0, 0, 0)
             value_layout.setSpacing(30)
             cur_label = QLabel("当前: 0.00")
-            cur_label.setStyleSheet("color: #0078D7; font-size: 8pt; font-weight: bold; border: none;")
+            cur_label.setObjectName("motorCurValue")
             cur_label.setAlignment(Qt.AlignCenter)
             tar_label = QLabel("目标: 0.00")
-            tar_label.setStyleSheet("color: #666; font-size: 8pt; border: none;")
+            tar_label.setObjectName("motorTarValue")
             tar_label.setAlignment(Qt.AlignCenter)
             value_layout.addStretch()
             value_layout.addWidget(cur_label)
@@ -463,44 +521,34 @@ class DeviceTab(QWidget):
             block_layout.addWidget(value_widget)
             return block_widget, cur_label, tar_label
 
-        block_pos, cur_pos, tar_pos = create_block("位移", "mm", "#D13438")
-        block_vel, cur_vel, tar_vel = create_block("速度", "mm/s", "#D13438")
-        block_acc, cur_acc, tar_acc = create_block("加速度", "mm/s²", "#D13438")
+        block_pos, cur_pos, tar_pos = create_block("角度", "deg")
+        block_vel, cur_vel, tar_vel = create_block("转速", "rpm")
+        block_acc, cur_acc, tar_acc = create_block("角加速度", "")
+
         main_layout.addWidget(block_pos)
         line1 = QFrame()
         line1.setFrameShape(QFrame.HLine)
-        line1.setStyleSheet("background-color: white; border: none; height: 3px;")
+        line1.setObjectName("motorLine")
         main_layout.addWidget(line1)
         main_layout.addWidget(block_vel)
         line2 = QFrame()
         line2.setFrameShape(QFrame.HLine)
-        line2.setStyleSheet("background-color: white; border: none; height: 3px;")
+        line2.setObjectName("motorLine")
         main_layout.addWidget(line2)
         main_layout.addWidget(block_acc)
-        lbls = [cur_pos, tar_pos, cur_vel, tar_vel, cur_acc, tar_acc, state_ball]
-        return frame, lbls
+
+        return frame, [cur_pos, tar_pos, cur_vel, tar_vel, cur_acc, tar_acc, state_ball]
 
     def create_sensor_card(self, title, color):
         frame = QFrame()
         frame.setObjectName("sensorCard")
-        frame.setStyleSheet("""
-            QFrame#sensorCard { 
-                background: #d9d9d6; 
-                border: 1px solid white; 
-                border-radius: 6px;
-            }
-            QFrame#sensorCard:hover {
-                border: 2px solid white;
-            }
-        """)
         main_layout = QVBoxLayout(frame)
-        main_layout.setContentsMargins(6, 6, 6, 6)
+        main_layout.setContentsMargins(8, 8, 8, 8)
         main_layout.setSpacing(8)
         top_widget = QWidget()
         top_layout = QHBoxLayout(top_widget)
         top_layout.setContentsMargins(0, 0, 0, 0)
         title_label = QLabel(title)
-        title_label.setStyleSheet("color: #333; font-weight: bold; font-size: 10pt; border: none;")
         title_label.setAlignment(Qt.AlignLeft)
         top_layout.addWidget(title_label)
         main_layout.addWidget(top_widget)
@@ -512,44 +560,41 @@ class DeviceTab(QWidget):
             block_layout.setSpacing(10)
             block_layout.addStretch()
             label = QLabel(f"{axis_name} ({unit}):")
-            label.setStyleSheet(f"color: {color}; font-size: 8pt; font-weight: bold; border: none;")
             label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             block_layout.addWidget(label)
             value_label = QLabel("0.00")
-            value_label.setStyleSheet(f"color: #000; font-size: 8pt; font-weight: bold; border: none;")
             value_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             block_layout.addWidget(value_label)
             block_layout.addStretch()
             return block_widget, value_label
 
-        block_pitch, val_pitch = create_axis_block("Pitch", "deg")
-        block_roll, val_roll = create_axis_block("Roll", "deg")
-        block_yaw, val_yaw = create_axis_block("Yaw", "deg")
+        block_pitch, val_pitch = create_axis_block("弯曲角(原始)", "deg")
+        block_roll, val_roll = create_axis_block("弯曲角(滤波)", "deg")
+        block_yaw, val_yaw = create_axis_block("编码值", "")
         main_layout.addWidget(block_pitch)
         line1 = QFrame()
         line1.setFrameShape(QFrame.HLine)
-        line1.setStyleSheet("background-color: white; border: none; height: 1px;")
         main_layout.addWidget(line1)
         main_layout.addWidget(block_roll)
         line2 = QFrame()
         line2.setFrameShape(QFrame.HLine)
-        line2.setStyleSheet("background-color: white; border: none; height: 1px;")
         main_layout.addWidget(line2)
         main_layout.addWidget(block_yaw)
-        lbls = [val_pitch, val_roll, val_yaw]
-        return frame, lbls
+        return frame, [val_pitch, val_roll, val_yaw]
 
     def create_flat_card(self, title, val, color):
         frame = QFrame()
-        frame.setStyleSheet("QFrame { background: #d9d9d6; border: 3px solid white; border-radius: 6px; }")
+        frame.setProperty("flatCard", True)
         layout = QHBoxLayout(frame)
+        layout.setContentsMargins(12, 8, 12, 8)
         lbl_val = QLabel(val)
-        lbl_val.setStyleSheet(f"color: {color}; font-size: 12pt; font-weight: bold; border: none;")
-        layout.addWidget(QLabel(title, styleSheet="color: black; font-weight:bold; border:none; font-size:12pt;"))
+        title_label = QLabel(title)
+        layout.addWidget(title_label)
         layout.addStretch()
         layout.addWidget(lbl_val)
         return frame, lbl_val
 
+    # ---------- 设备扩容 ----------
     def expand_device(self, dev_type):
         if dev_type == 'motor':
             self.num_m += 1
@@ -560,14 +605,15 @@ class DeviceTab(QWidget):
             self.m_page = 0
         else:
             self.num_s += 1
-            self.sensor_data.append([0.0, 0.0, 0.0])
-            self.hist_sensors = [step + [[0.0, 0.0, 0.0]] for step in self.hist_sensors]
+            self.sensor_data.append([10.0, 0.0, 0.0])
+            self.hist_sensors = [step + [[10.0, 0.0, 0.0]] for step in self.hist_sensors]
             self.s_page = 0
         self.rebuild_cards()
         self.refresh_pagination()
         self.logger(f"🔧 成功扩容了一个{dev_type}，当前 M:{self.num_m}, S:{self.num_s}", port=self.port_name)
 
     def rebuild_cards(self):
+        # 清空网格布局
         for i in reversed(range(self.grid_m.count())):
             self.grid_m.itemAt(i).widget().setParent(None)
         for i in reversed(range(self.grid_s.count())):
@@ -575,6 +621,8 @@ class DeviceTab(QWidget):
         self.cb_motor_id.clear()
         self.cb_sensor_monitor.clear()
         self.cb_view_id.clear()
+
+        # 确保数据列表长度匹配
         if self.num_m > 0:
             while len(self.motor_data) < self.num_m:
                 self.motor_data.append([0.0, 0.0, 0.0])
@@ -584,32 +632,39 @@ class DeviceTab(QWidget):
             self.motor_data = self.motor_data[:self.num_m]
             self.motor_states = self.motor_states[:self.num_m]
         else:
-            self.motor_data = []
-            self.motor_states = []
+            self.motor_data.clear()
+            self.motor_states.clear()
+
         if self.num_s > 0:
             while len(self.sensor_data) < self.num_s:
                 self.sensor_data.append([0.0, 0.0, 0.0])
             self.sensor_data = self.sensor_data[:self.num_s]
         else:
-            self.sensor_data = []
-        self.cards_motor = []
+            self.sensor_data.clear()
+
+        # 重建电机卡片
+        self.cards_motor.clear()
         for i in range(self.num_m):
             card, lbls = self.create_motor_card(f"电机 ID:{i + 1}", "#000")
             self.cards_motor.append((card, lbls))
             self.grid_m.addWidget(card, 0, i % 3)
             self.cb_motor_id.addItem(f"电机 {i + 1}")
-        self.cards_sensor = []
+
+        # 重建传感器卡片
+        self.cards_sensor.clear()
         for i in range(self.num_s):
-            card, lbls = self.create_sensor_card(f"IMU ID:{i + 1}", "#D83B01")
+            card, lbls = self.create_sensor_card(f"弯曲传感器 ID:{i + 1}", "#D83B01")
             self.cards_sensor.append((card, lbls))
             self.grid_s.addWidget(card, 0, i % 3)
-            self.cb_sensor_monitor.addItem(f"IMU {i + 1}")
+            self.cb_sensor_monitor.addItem(f"弯曲传感器 {i + 1}")
+
         max_id = max(self.num_m, self.num_s)
         self.cb_view_id.addItems([f"ID {i + 1}" for i in range(max_id)])
         self.refresh_pagination()
-        self.update_single_monitor_labels() # 确保ID列表与当前数量同步
+        self.update_single_monitor_labels()
         self.update_ui()
 
+    # ---------- 分页 ----------
     def change_page(self, t, delta):
         if t == 'm':
             self.m_page += delta
@@ -623,65 +678,51 @@ class DeviceTab(QWidget):
         self.lbl_m_page.setText(f"电机 {self.m_page + 1}/{m_pages} 页")
         for i, (card, _) in enumerate(self.cards_motor):
             card.setVisible(self.m_page * 3 <= i < (self.m_page + 1) * 3)
+
         s_pages = max(1, math.ceil(self.num_s / 3))
         self.s_page = max(0, min(self.s_page, s_pages - 1))
-        self.lbl_s_page.setText(f"IMU {self.s_page + 1}/{s_pages} 页")
+        self.lbl_s_page.setText(f"弯曲传感器 {self.s_page + 1}/{s_pages} 页")
         for i, (card, _) in enumerate(self.cards_sensor):
             card.setVisible(self.s_page * 3 <= i < (self.s_page + 1) * 3)
 
-    # ------------------ 系统控制 ------------------
-
-    def sys_toggle(self,checked):
-        """开关按钮状态变化时的处理函数"""
+    # ================== 系统控制 ==================
+    def sys_toggle(self, checked):
         if checked:
-            # 按钮被按下（开启状态）
             self.btn_toggle.setText("⏹ 关闭控制系统")
-            self.btn_toggle.set_normal_color("#D13438")  # 改为危险样式（红色）
+            self.btn_toggle.set_normal_color("#D13438")
             self.btn_toggle.set_hover_color("#6B1418")
-            # 刷新样式表，使属性生效
             self.btn_toggle.style().unpolish(self.btn_toggle)
             self.btn_toggle.style().polish(self.btn_toggle)
-            self.sys_start()   # 启动系统
+            self.sys_start()
         else:
-            # 按钮弹起（关闭状态）
-            self.btn_toggle.setText("▶ 启动控制系统")
-            self.btn_toggle.set_normal_color("#107C10")  # 恢复成功样式（绿色）
-            self.btn_toggle.set_hover_color("#063A06")
-            self.btn_toggle.style().unpolish(self.btn_toggle)
-            self.btn_toggle.style().polish(self.btn_toggle)
-            self.sys_close()    # 关闭系统
-
-    def sys_close(self):
-        self.is_started = False
-        self.closed_loop_enabled = False   # 停止闭环
-        self.send_cmd(0x00, "失能", "关闭LQTS喷管", is_motor=True)
-
-    def sys_start(self):
-        if self.is_started:
-            return
-        self.is_started = True
-
-        self.send_cmd(0x01, "使能", "启动LQTS喷管", is_motor=True)
-
-    def sys_stop(self):
-        if self.is_started:
-            # 临时阻止信号，避免 setChecked 触发 toggled 导致递归
-            self.btn_toggle.blockSignals(True)
-
-            # 保持 checkable=True，只改变 checked 状态
-            self.btn_toggle.setChecked(False)   # ✅ 不是 setCheckable(False)
             self.btn_toggle.setText("▶ 启动控制系统")
             self.btn_toggle.set_normal_color("#107C10")
             self.btn_toggle.set_hover_color("#063A06")
             self.btn_toggle.style().unpolish(self.btn_toggle)
             self.btn_toggle.style().polish(self.btn_toggle)
-            # 恢复信号（尽快恢复，避免长时间阻塞）
-            self.btn_toggle.blockSignals(False)
+            self.sys_close()
 
+    def sys_close(self):
         self.is_started = False
-        self.closed_loop_enabled = False   # 停止闭环
+        self.send_cmd(0x00, "失能", "关闭控制系统", is_motor=True)
 
-        # 发送紧急停止命令
+    def sys_start(self):
+        if self.is_started:
+            return
+        self.is_started = True
+        self.send_cmd(0x01, "使能", "启动控制系统", is_motor=True)
+
+    def sys_stop(self):
+        if self.is_started:
+            self.btn_toggle.blockSignals(True)
+            self.btn_toggle.setChecked(False)
+            self.btn_toggle.setText("▶ 启动控制系统")
+            self.btn_toggle.set_normal_color("#107C10")
+            self.btn_toggle.set_hover_color("#063A06")
+            self.btn_toggle.style().unpolish(self.btn_toggle)
+            self.btn_toggle.style().polish(self.btn_toggle)
+            self.btn_toggle.blockSignals(False)
+        self.is_started = False
         self.send_cmd(0x02, "紧急停止", "LQTS紧急停止按钮", is_motor=True)
 
     def handle_serial_error(self, error_msg):
@@ -692,144 +733,90 @@ class DeviceTab(QWidget):
         self.hist_motors.clear()
         self.hist_sensors.clear()
         self.logger(f"❌ 串口异常: {error_msg}", port=self.port_name)
-        msg_box = QMessageBox(self)
-        msg_box.setIcon(QMessageBox.Critical)
-        msg_box.setWindowTitle("串口断连")
-        msg_box.setText(f"当前串口设备 {self.port_name} 已断开连接！")
-        msg_box.setInformativeText("请关闭当前数据页面，重新连接串口设备。")
-        msg_box.setStandardButtons(QMessageBox.Ok)
-        msg_box.exec_()
+        QMessageBox.critical(self, "串口断连", f"当前串口设备 {self.port_name} 已断开连接！")
         # 禁用所有操作按钮
-        for btn in [self.btn_stop, self.btn_home, self.btn_m_next, self.btn_m_prev,
-                    self.btn_s_next, self.btn_s_prev, self.btn_send_m, self.btn_bend,
-                    self.btn_shrink, self.btn_cal, self.btn_read]:
+        buttons = [
+            self.btn_toggle, self.btn_stop, self.btn_home,
+            self.btn_forward, self.btn_release, self.btn_backward,
+            self.btn_send_m, self.btn_m_prev, self.btn_m_next,
+            self.btn_s_prev, self.btn_s_next,
+        ]
+        for btn in buttons:
+            if btn:
+                btn.setEnabled(False)
+        for btn in self.addr_buttons:
             btn.setEnabled(False)
 
+    # ================== 命令发送 ==================
     def send_cmd(self, func_code, action, detail, data=b'', is_motor=True):
+        debug_mode = False
+        if self.debug_check:
+            debug_mode = self.debug_check()
         try:
-            if func_code not in [0x00, 0x01, 0x02, 0x04, 0x06, 0xFE] and not self.is_started:
-                error_msg = "请先点击启动控制系统"
-                QMessageBox.warning(self, "拒绝", error_msg)
-                self.logger(f"❌ {error_msg}", level="ERROR", port=self.port_name)
+            if func_code not in [0x00, 0x01, 0x02, 0x04, 0x05, 0x06, 0xFE] and not self.is_started and not debug_mode:
+                QMessageBox.warning(self, "拒绝", "请先点击启动控制系统")
+                self.logger(f"❌ 请先点击启动控制系统", level="ERROR", port=self.port_name)
                 return
 
             frame_head = 0xAA if is_motor else 0xBB
             frame = struct.pack('>BBB', frame_head, func_code, len(data)) + data
             frame += bytes([sum(frame) & 0xFF])
+
+            if debug_mode and self.serial_error:
+                self.logger(f"📤 [DEBUG] {action} -> {detail} (模拟发送)", raw_data=frame, level="DEBUG", port=self.port_name)
+                return
+
             self.worker.send_data(frame)
-            # 记录操作历史
             GlobalHistory.add_record(self.port_name, action, detail, frame.hex().upper())
 
-            # 根据功能码选择不同的日志级别
-            if func_code == 0x02:  # 紧急停止 - 使用 WARNING 级别
+            if func_code == 0x02:
                 self.logger(f"📤 {action} -> {detail}", raw_data=frame, level="WARNING", port=self.port_name)
-            else:  # 其他操作 - 使用 INFO 级别
+            else:
                 self.logger(f"📤 {action} -> {detail}", raw_data=frame, port=self.port_name)
 
-        except serial.SerialException as e:
-            error_msg = f"串口通信失败: {str(e)}"
-            QMessageBox.critical(self, "串口错误", error_msg)
-            self.logger(f"❌ {error_msg}", level="ERROR", port=self.port_name)
         except Exception as e:
-            error_msg = f"发送命令失败: {str(e)}"
-            QMessageBox.critical(self, "错误", error_msg)
-            self.logger(f"❌ {error_msg}", level="ERROR", port=self.port_name)
+            QMessageBox.critical(self, "错误", f"发送命令失败: {str(e)}")
+            self.logger(f"❌ 发送命令失败: {str(e)}", level="ERROR", port=self.port_name)
 
     def send_motor(self):
-        # 检查是否有电机
-        if self.num_m == 0:
-            error_msg = "当前没有可用的电机设备，无法进行电机控制"
-            QMessageBox.warning(self, "错误", error_msg)
-            self.logger(f"❌ {error_msg}", level="ERROR", port=self.port_name)
+        debug_mode = self.debug_check() if self.debug_check else False
+        if self.num_m == 0 and not debug_mode:
+            QMessageBox.warning(self, "错误", "当前没有可用的电机设备")
             return
-
-        m_id = self.cb_motor_id.currentIndex() + 1
-
-        # 检查电机ID是否有效
-        if m_id > self.num_m:
-            error_msg = f"电机ID {m_id} 无效，当前只有 {self.num_m} 个电机"
-            QMessageBox.warning(self, "错误", error_msg)
-            self.logger(f"❌ {error_msg}", level="ERROR", port=self.port_name)
-            return
-
-        try:
+        if debug_mode and self.num_m == 0:
+            m_id = 1
+            pos, vel, acc = 0, 10, 10
+        else:
+            m_id = self.cb_motor_id.currentIndex() + 1
+            if m_id > self.num_m:
+                QMessageBox.warning(self, "错误", f"电机ID {m_id} 无效")
+                return
             pos = int(self.spin_m_pos.spin.value() * 100)
             vel = int(self.spin_m_vel.spin.value() * 100)
             acc = int(self.spin_m_acc.spin.value() * 100)
 
-            # 更新目标值（确保列表长度足够）
-            while len(self.motor_target) < self.num_m:
-                self.motor_target.append([0.0, 0.0, 0.0])
+        while len(self.motor_target) < self.num_m:
+            self.motor_target.append([0.0, 0.0, 0.0])
+        if m_id <= len(self.motor_target):
+            self.motor_target[m_id - 1] = [pos / 100, vel / 100, acc / 100]
 
-            if m_id <= len(self.motor_target):
-                self.motor_target[m_id-1] = [self.spin_m_pos.spin.value(), self.spin_m_vel.spin.value(), self.spin_m_acc.spin.value()]
-
-            self.update_ui()
-
-            direction = 0 if pos >= 0 else 1
-            distance = abs(pos)
-            data = struct.pack('>BBHHH', m_id, direction, distance, vel, acc)
-            self.send_cmd(0x03, f"控制电机{m_id}", f"位移:{pos/100}, 速度:{vel/100}, 加速度:{acc/100}", data, is_motor=True)
-
-        except Exception as e:
-            error_msg = f"发送电机控制命令失败: {str(e)}"
-            QMessageBox.critical(self, "错误", error_msg)
-            self.logger(f"❌ {error_msg}", level="ERROR", port=self.port_name)
-
-    def calibrate_sensor(self):
-        if self.num_s == 0:
-            error_msg = "当前没有可用的IMU传感器，无法进行传感器校准"
-            QMessageBox.warning(self, "错误", error_msg)
-            self.logger(f"❌ {error_msg}", level="ERROR", port=self.port_name)
-            return
-
-        idx = self.cb_sensor_monitor.currentIndex() + 1
-        if idx > self.num_s:
-            error_msg = f"IMU ID {idx} 无效，当前只有 {self.num_s} 个传感器"
-            QMessageBox.warning(self, "错误", error_msg)
-            self.logger(f"❌ {error_msg}", level="ERROR", port=self.port_name)
-            return
-
-        try:
-            self.send_cmd(0x03, f"校准IMU{idx}", f"Sensor {idx} 校准", struct.pack('>B', idx), is_motor=False)
-        except Exception as e:
-            error_msg = f"发送IMU校准命令失败: {str(e)}"
-            QMessageBox.critical(self, "错误", error_msg)
-            self.logger(f"❌ {error_msg}", level="ERROR", port=self.port_name)
-
-    def read_sensor_data(self):
-        if self.num_s == 0:
-            error_msg = "当前没有可用的IMU传感器，无法读取传感器"
-            QMessageBox.warning(self, "错误", error_msg)
-            self.logger(f"❌ {error_msg}", level="ERROR", port=self.port_name)
-            return
-
-        idx = self.cb_sensor_monitor.currentIndex() + 1
-        if idx > self.num_s:
-            error_msg = f"IMU ID {idx} 无效，当前只有 {self.num_s} 个传感器"
-            QMessageBox.warning(self, "错误", error_msg)
-            self.logger(f"❌ {error_msg}", level="ERROR", port=self.port_name)
-            return
-
-        try:
-            self.send_cmd(0x01, f"读取IMU{idx}", f"请求IMU{idx}数据", struct.pack('>B', idx), is_motor=False)
-        except Exception as e:
-            error_msg = f"发送读取IMU数据命令失败: {str(e)}"
-            QMessageBox.critical(self, "错误", error_msg)
-            self.logger(f"❌ {error_msg}", level="ERROR", port=self.port_name)
+        direction = 0 if pos >= 0 else 1
+        distance = abs(pos)
+        data = struct.pack('>BBHHH', m_id, direction, distance, vel, acc)
+        self.send_cmd(0x03, f"控制电机{m_id}", f"角度:{pos/100}, 转速:{vel/100}, 角加速度:{acc/100}", data, is_motor=True)
 
     def send_home_command(self):
-        if not self.is_started:
-            error_msg = "请先点击启动控制系统"
-            QMessageBox.warning(self, "错误", error_msg)
-            self.logger(f"❌ {error_msg}", level="ERROR", port=self.port_name)
+        debug_mode = self.debug_check() if self.debug_check else False
+        if not self.is_started and not debug_mode:
+            QMessageBox.warning(self, "错误", "请先点击启动控制系统")
             return
         if self.num_m == 0:
-            error_msg = "当前没有可用的电机设备，无法归中"
-            QMessageBox.warning(self, "错误", error_msg)
-            self.logger(f"❌ {error_msg}", level="ERROR", port=self.port_name)
+            QMessageBox.warning(self, "错误", "当前没有可用的电机设备")
             return
-
+        for spin in self.addr_spinboxes:
+            spin.setValue(0)
+            # 新增：
+            self.spin_grab_angle.setValue(0)
         try:
             count = self.num_m
             start_addr = 1
@@ -838,220 +825,171 @@ class DeviceTab(QWidget):
             for dist in distances:
                 data += struct.pack('>H', dist)
             self.send_cmd(0x04, "一键归中", "所有电机距离复位为0", data, is_motor=True)
-            # 喷管目标弯曲角度置 0
-            self.target_bend_angle = 0
+
+            # 重置显示的角度目标
+            self.target_angle1 = 0.0
+            self.target_angle2 = 0.0
+            # 重置所有地址输入框
+            for spin in self.addr_spinboxes:
+                spin.setValue(0)
         except Exception as e:
-            error_msg = f"发送一键归中命令失败: {str(e)}"
-            QMessageBox.critical(self, "错误", error_msg)
-            self.logger(f"❌ {error_msg}", level="ERROR", port=self.port_name)
+            QMessageBox.critical(self, "错误", f"发送一键归中命令失败: {str(e)}")
+            self.logger(f"❌ 发送一键归中命令失败: {str(e)}", level="ERROR", port=self.port_name)
 
-    def send_scale_command(self):
-        if not self.is_started:
-            error_msg = "请先点击启动控制系统"
-            QMessageBox.warning(self, "错误", error_msg)
-            self.logger(f"❌ {error_msg}", level="ERROR", port=self.port_name)
+
+    # ================== 新增：多地址弯曲控制 ==================
+    def bend_forward(self):
+        self._send_multi_addr_bend(direction=1)
+
+    def bend_backward(self):
+        self._send_multi_addr_bend(direction=-1)
+
+    def bend_release(self):
+        self._send_multi_addr_bend(direction=0)
+
+    def grab(self):
+        """抓取：所有地址弯曲相同角度（正向）"""
+        angle = self.spin_grab_angle.value()
+        if self.num_m < 4:
+            QMessageBox.warning(self, "错误", "电机数量不足4个，无法执行抓取")
+            return
+        # 发送1~4号地址，角度为正
+        self._send_bend_command([1, 2, 3, 4], [angle] * 4)
+
+    def reverse_grab(self):
+        """反向抓取：所有地址弯曲相同角度（反向）"""
+        angle = self.spin_grab_angle.value()
+        if self.num_m < 4:
+            QMessageBox.warning(self, "错误", "电机数量不足4个，无法执行反向抓取")
+            return
+        # 发送1~4号地址，角度为负
+        self._send_bend_command([1, 2, 3, 4], [-angle] * 4)
+
+    def _send_multi_addr_bend(self, direction):
+        selected_addrs = []
+        values = []
+        for i in range(4):
+            if self.addr_buttons[i].isChecked():
+                addr = i + 1
+                val = self.addr_spinboxes[i].value()
+                if direction == 0:
+                    val = 0
+                elif direction == -1:
+                    val = -val
+                selected_addrs.append(addr)
+                values.append(val)
+        if not selected_addrs:
+            QMessageBox.warning(self, "提示", "请至少勾选一个地址")
+            return
+        self._send_bend_command(selected_addrs, values)
+
+    def _send_bend_command(self, addrs, angles):
+        debug_mode = self.debug_check() if self.debug_check else False
+        if not self.is_started and not debug_mode:
+            QMessageBox.warning(self, "错误", "请先启动控制系统")
             return
 
-        if self.num_m == 0:
-            error_msg = "当前没有可用的电机设备,无法进行截面收缩"
-            QMessageBox.warning(self, "错误", error_msg)
-            self.logger(f"❌ {error_msg}", level="ERROR", port=self.port_name)
-            return
+        # 组装协议数据（示例：命令码 0x07）
+        data = bytearray()
+        data.append(len(addrs))
+        for addr, angle in zip(addrs, angles):
+            abs_angle = abs(int(angle * 100))
+            direction_flag = 0 if angle >= 0 else 1
+            data.extend(struct.pack('<BHBB', addr, abs_angle, direction_flag, 0x00))
 
-        try:
-            self.target_area_change = int(self.spin_scale.spin.value())
-            count = 1
-            special_addr = 0xFD
-            direction = 1
-            data = struct.pack('>BBBH', count, special_addr, direction, self.target_area_change* 100)
-            self.send_cmd(0x06, "截面收缩", f"收缩比例={self.target_area_change}%", data, is_motor=True)
-        except Exception as e:
-            error_msg = f"发送截面收缩命令失败: {str(e)}"
-            QMessageBox.critical(self, "错误", error_msg)
-            self.logger(f"❌ {error_msg}", level="ERROR", port=self.port_name)
+        # 更新显示的目标角度（假设用最高地址的角度）
+        if angles:
+            self.target_angle1 = angles[0] if len(angles) >= 1 else 0.0
+            self.target_angle2 = angles[1] if len(angles) >= 2 else angles[0]
 
-    def send_bend_command(self, angle_deg=None, log_enabled=True):
-        """
-        发送弯曲命令（开环或闭环均可调用）
-        :param angle_deg: 目标角度（度），若为 None 则从 spin_bend 取值
-        :param log_enabled: 是否记录日志（闭环控制时可设为 False）
-        """
-        if not self.is_started:
-            if log_enabled:
-                QMessageBox.warning(self, "错误", "请先点击启动控制系统")
-            return
-        if self.num_m == 0:
-            if log_enabled:
-                QMessageBox.warning(self, "错误", "当前没有可用的电机设备，无法进行弯曲")
-            return
+        self.send_cmd(0x07, "多地址弯曲", f"地址:{addrs} 角度:{angles}", bytes(data), is_motor=True)
 
-        # 确定目标角度
-        if angle_deg is None:
-            target_angle = self.spin_bend.spin.value()
-        else:
-            target_angle = angle_deg
-
-        # 更新界面显示的目标值（开环时显示 spin_bend 值，闭环时显示实际目标）
-        self.target_bend_angle = target_angle
-
-        direction = 0 if target_angle >= 0 else 1
-        angle = abs(int(target_angle * 100))   # 转为整数（0.01度单位）
-
-        count = 1
-        special_addr = 0xFE
-        data = struct.pack('>BBBH', count, special_addr, direction, angle)
-
-        action = "喷管弯曲"
-        detail = f"方向:{'正' if direction == 0 else '负'}, 角度:{angle/100}度"
-        self.send_cmd(0x06, action, detail, data, is_motor=True)
-
-    def send_closed_loop_bend_command(self):
-        """启动/停止闭环弯曲控制"""
-        if not self.is_started:
-            QMessageBox.warning(self, "错误", "请先点击启动控制系统")
-            return
-        if self.num_m == 0 or self.num_s == 0:
-            QMessageBox.warning(self, "错误", "需要至少一个电机和一个 IMU 才能进行闭环弯曲控制")
-            return
-
-        if not self.closed_loop_enabled:
-            # 启动闭环控制
-            self.closed_loop_target_angle = self.spin_bend.spin.value()
-            self.pid.reset()
-            self.last_sent_angle = None          # 重置记录
-            self.closed_loop_enabled = True
-            self.btn_closed_bend.setText("⏹ 停止闭环弯曲")
-            self.btn_closed_bend.set_normal_color("#D13438")
-            self.logger(f"🔄 启动闭环弯曲控制，目标角度={self.closed_loop_target_angle}°", port=self.port_name)
-        else:
-            # 停止闭环控制
-            self.closed_loop_enabled = False
-            self.btn_closed_bend.setText("闭环弯曲")
-            self.btn_closed_bend.set_normal_color("#FF8C00")
-            self.logger("⏹ 停止闭环弯曲控制", port=self.port_name)
-
+    # ================== 闭环控制（保留但暂未使用） ==================
     def closed_loop_control(self):
-        if not self.closed_loop_enabled or not self.is_started:
+        if not self.closed_loop_enabled:
             return
-        if self.num_s == 0:
-            return
-
-        current_angle = self.filtered_bend_angle   # 使用滤波值
-        # PID 输出即为目标角度（度）
-        target_angle = -self.pid.update(self.closed_loop_target_angle, current_angle)
-        # 限幅
-        target_angle = max(-70, min(70, target_angle))
-
-        # 死区判断：如果与上次发送的角度差异小于阈值，则不发送
-        if self.last_sent_angle is not None:
-            if abs(target_angle - self.last_sent_angle) < self.angle_deadband:
-                return
-
-        # 发送弯曲命令（不记录日志）
-        self.send_bend_command(angle_deg=target_angle, log_enabled=False)
-        self.last_sent_angle = target_angle
+        # 原有的闭环逻辑，可保留作为未来扩展
+        pass
 
     def apply_pid_params(self):
-        self.pid.Kp = self.spin_kp.spin.value()
-        self.pid.Ki = self.spin_ki.spin.value()
-        self.pid.Kd = self.spin_kd.spin.value()
-        self.logger(f"PID参数已更新: Kp={self.pid.Kp:.2f}, Ki={self.pid.Ki:.2f}, Kd={self.pid.Kd:.2f}", port=self.port_name)
+        pass  # 暂时不暴露 PID 调节界面
 
-    # ------------------ 核心：数据解析（调用后端）------------------
+    # ================== 数据解析 ==================
     @pyqtSlot(bytes)
     def parse_data(self, data):
-        """接收串口原始数据，组帧并调用后端解析器"""
         self.recv_buffer.extend(data)
-        if len(self.recv_buffer) > 1024:
-            self.recv_buffer.clear()
-            return
+        if len(self.recv_buffer) > 4096:
+            self.recv_buffer = self.recv_buffer[-2048:]
 
-        while len(self.recv_buffer) >= 5:
-            # 查找帧头 0xBB
-            if self.recv_buffer[0] != 0xBB:
-                self.recv_buffer.pop(0)
+        i = 0
+        while i < len(self.recv_buffer):
+            if i + 3 > len(self.recv_buffer):
+                break
+            if self.recv_buffer[i] != 0xBB or self.recv_buffer[i + 1] != 0x02:
+                i += 1
                 continue
 
-            d_len = self.recv_buffer[2]
-            if d_len > 255:
-                self.recv_buffer.pop(0)
-                continue
-
-            frame_len = 3 + d_len + 1
-            if len(self.recv_buffer) < frame_len:
+            total_len = self.recv_buffer[i + 2]
+            frame_total = total_len + 4
+            if i + frame_total > len(self.recv_buffer):
                 break
 
-            # 取出完整帧
-            frame = bytes(self.recv_buffer[:frame_len])
-            self.recv_buffer = self.recv_buffer[frame_len:]
-
-            # 校验和
+            frame = bytes(self.recv_buffer[i:i + frame_total])
             if (sum(frame[:-1]) & 0xFF) != frame[-1]:
-                continue   # 校验失败，丢弃该帧
+                i += 1
+                continue
 
-            # 调用后端解析器（启用滤波）
-            status = ProtocolParser.parse_frame(
-                frame,
-                apply_filter=True,          # 启用滤波
-                filter_obj=self.data_filter
-            )
+            status = ProtocolParser.parse_frame(frame, apply_filter=True, filter_obj=self.data_filter)
+            if status is not None:
+                if status.num_motors != self.num_m or status.num_sensors != self.num_s:
+                    self.num_m = status.num_motors
+                    self.num_s = status.num_sensors
+                    self.rebuild_cards()
 
-            if status is None:
-                continue   # 解析失败（非 0x02 帧或数据不足）
+                self.motor_data = [[m.pos, m.vel, m.acc] for m in status.motors]
+                self.motor_states = [m.status for m in status.motors]
+                self.sensor_data = [[s.pitch, s.roll, s.yaw] for s in status.sensors]
+                self.current_angle1 = status.bend_angle1
+                self.current_angle2 = status.bend_angle2
 
-            # ---------- 根据解析结果更新前端状态 ----------
-            # 1. 若设备数量变化，重建卡片
-            if status.num_motors != self.num_m or status.num_sensors != self.num_s:
-                self.num_m = status.num_motors
-                self.num_s = status.num_sensors
-                self.rebuild_cards()
+                self.filtered_bend_angle = (self.angle_filter_alpha * self.current_angle2 +
+                                            (1 - self.angle_filter_alpha) * self.filtered_bend_angle)
+                self.current_bend_angle = self.filtered_bend_angle
 
-            # 2. 更新电机和传感器数据（格式转换为原前端使用的列表）
-            self.motor_data = [[m.pos, m.vel, m.acc] for m in status.motors]
-            self.motor_states = [m.status for m in status.motors]
-            self.sensor_data = [[s.pitch, s.roll, s.yaw] for s in status.sensors]
+                if self.motor_data:
+                    self.current_area_change = (1 - self.motor_data[0][0] / (2 * 3.1415926 * 50)) ** 2 * 100
 
-            # 3. 更新喷管参数
-            # ---------- 修正：更新数值变量，不要覆盖 QLabel 对象 ----------
-            if self.num_s > 0:
-                # 假设第一个 IMU 的 pitch 角度代表当前弯曲角度（根据实际情况调整）
-                self.current_bend_angle = self.sensor_data[0][0]
-            else:
-                self.current_bend_angle = 0.0
-            # 更新 self.current_bend_angle，使用一阶低通滤波
-            self.filtered_bend_angle = self.angle_filter_alpha * self.current_bend_angle + (1 - self.angle_filter_alpha) * self.filtered_bend_angle
-            self.current_bend_angle = self.filtered_bend_angle   # 或保留原值用于显示，闭环用滤波值
-            # 当前面积缩放比（根据实际协议赋值）
-            self.current_area_change = (1-self.motor_data[0][0] / (2 * 3.1415926 * 50))*(1-self.motor_data[0][0] / (2 * 3.1415926 * 50))*100
+                self.update_ui()
 
-            # 4. 刷新界面
-            self.update_ui()
+            self.recv_buffer = self.recv_buffer[i + frame_total:]
+            i = 0
 
     def update_ui(self):
         if len(self.cards_motor) != self.num_m or len(self.cards_sensor) != self.num_s:
             return
+
+        # 更新电机卡片
         for i in range(self.m_page * 3, min((self.m_page + 1) * 3, self.num_m)):
             labels = self.cards_motor[i][1]
-            cur_pos_val, cur_vel_val, cur_acc_val = self.motor_data[i]
-            target_pos, target_vel, target_acc = self.motor_target[i] if i < len(self.motor_target) else (0.0, 0.0, 0.0)
-            state_val = self.motor_states[i]
-            labels[0].setText(f"当前: {cur_pos_val:.2f}")
-            labels[1].setText(f"目标: {target_pos:.2f}")
-            labels[2].setText(f"当前: {cur_vel_val:.2f}")
-            labels[3].setText(f"目标: {target_vel:.2f}")
-            labels[4].setText(f"当前: {cur_acc_val:.2f}")
-            labels[5].setText(f"目标: {target_acc:.2f}")
+            cur_pos, cur_vel, cur_acc = self.motor_data[i]
+            tar_pos, tar_vel, tar_acc = self.motor_target[i] if i < len(self.motor_target) else (0, 0, 0)
+            state = self.motor_states[i]
+            labels[0].setText(f"当前: {cur_pos:.2f}")
+            labels[1].setText(f"目标: {tar_pos:.2f}")
+            labels[2].setText(f"当前: {cur_vel:.2f}")
+            labels[3].setText(f"目标: {tar_vel:.2f}")
+            labels[4].setText(f"当前: {cur_acc:.2f}")
+            labels[5].setText(f"目标: {tar_acc:.2f}")
             lbl_state = labels[6]
-            if state_val == 0:
-                lbl_state.setStyleSheet("color: #D13438; font-size:10pt; border: none;")
-            else:
-                lbl_state.setStyleSheet("color: #107C10; font-size:10pt; border: none;")
+            lbl_state.setStyleSheet("color: #e74c3c; font-size: 10pt;" if state == 0 else "color: #2ecc71; font-size: 10pt;")
+
+        # 更新传感器卡片
         for i in range(self.s_page * 3, min((self.s_page + 1) * 3, self.num_s)):
             self.cards_sensor[i][1][0].setText(f"{self.sensor_data[i][0]:.2f}")
             self.cards_sensor[i][1][1].setText(f"{self.sensor_data[i][1]:.2f}")
             self.cards_sensor[i][1][2].setText(f"{self.sensor_data[i][2]:.2f}")
 
-        # 定点专门监测更新
+        # 定点监测更新
         idx = self.cb_view_id.currentIndex()
         is_motor = (self.cb_view_type.currentIndex() == 0)
         if is_motor:
@@ -1071,67 +1009,67 @@ class DeviceTab(QWidget):
                 for _, value_label in self.single_cards:
                     value_label.setText("--")
 
-        if hasattr(self, 'cb_sensor_monitor'):
-            self.update_sensor_monitor(self.cb_sensor_monitor.currentIndex())
+        # 电机状态指示灯
         if hasattr(self, 'motor_status_ball') and hasattr(self, 'motor_states'):
             idx = self.cb_motor_id.currentIndex()
-            if idx >= 0 and idx < len(self.motor_states):
+            if 0 <= idx < len(self.motor_states):
                 state_val = self.motor_states[idx]
-                if state_val == 0:
-                    self.motor_status_ball.setStyleSheet("color: #D13438; font-size: 8pt;")
-                else:
-                    self.motor_status_ball.setStyleSheet("color: #107C10; font-size: 8pt;")
-        if hasattr(self, 'target_angle_val'):
-            self.target_angle_val.setText(f"{self.target_bend_angle:.2f}")
-        if hasattr(self, 'current_angle_val'):
-            self.current_angle_val.setText(f"{self.current_bend_angle:.2f}")
-        if hasattr(self, 'target_area_val'):
-            self.target_area_val.setText(f"{self.target_area_change:.2f}")
-        if hasattr(self, 'current_area_val'):
-            self.current_area_val.setText(f"{self.current_area_change:.2f}")
+                self.motor_status_ball.setStyleSheet(
+                    "color: #D13438; font-size: 8pt;" if state_val == 0 else "color: #107C10; font-size: 8pt;")
+
+        # 弯曲角度显示卡片
+        if hasattr(self, 'target_angle1_val'):
+            self.target_angle1_val.setText(f"{self.target_angle1:.2f}")
+        if hasattr(self, 'current_angle1_val'):
+            self.current_angle1_val.setText(f"{self.current_angle1:.2f}")
+        if hasattr(self, 'target_angle2_val'):
+            self.target_angle2_val.setText(f"{self.target_angle2:.2f}")
+        if hasattr(self, 'current_angle2_val'):
+            self.current_angle2_val.setText(f"{self.current_angle2:.2f}")
 
     def update_motor_status_ball(self, idx=None):
         if idx is None:
             idx = self.cb_motor_id.currentIndex()
         if hasattr(self, 'motor_status_ball') and hasattr(self, 'motor_states'):
-            if idx >= 0 and idx < len(self.motor_states):
+            if 0 <= idx < len(self.motor_states):
                 state_val = self.motor_states[idx]
-                if state_val == 0:
-                    self.motor_status_ball.setStyleSheet("color: #D13438; font-size: 8pt;")
-                else:
-                    self.motor_status_ball.setStyleSheet("color: #107C10; font-size: 8pt;")
+                self.motor_status_ball.setStyleSheet(
+                    "color: #D13438; font-size: 8pt;" if state_val == 0 else "color: #107C10; font-size: 8pt;")
 
     def update_sensor_monitor(self, idx=None):
         pass
 
+    # ================== 历史记录与曲线 ==================
     def record_history(self):
         if self.serial_error:
             return
-        # 初始化起始时间（第一次调用时）
         if self.start_time is None:
             self.start_time = time.time()
 
-        # 计算相对时间（秒，从 0 开始）
         current_time_sec = time.time() - self.start_time
 
-        # 弯曲角度
+        # 弯曲角度历史
         self.hist_bend_time.append(current_time_sec)
-        self.hist_bend_target.append(self.target_bend_angle)
-        self.hist_bend_current.append(self.current_bend_angle)
+        self.hist_target1.append(self.target_angle1)
+        self.hist_current1.append(self.current_angle1)
+        self.hist_target2.append(self.target_angle2)
+        self.hist_current2.append(self.current_angle2)
 
-        # 限制长度（保留最近60秒）
         while len(self.hist_bend_time) > 0 and self.hist_bend_time[0] < current_time_sec - 60:
             self.hist_bend_time.pop(0)
-            self.hist_bend_target.pop(0)
-            self.hist_bend_current.pop(0)
+            self.hist_target1.pop(0)
+            self.hist_current1.pop(0)
+            self.hist_target2.pop(0)
+            self.hist_current2.pop(0)
 
-        # 更新曲线窗口（如果已打开）
         if self.bend_graph_window and self.bend_graph_window.isVisible():
-            self.bend_graph_controller.window.update_data(
-                self.hist_bend_time, self.hist_bend_target, self.hist_bend_current
+            self.bend_graph_controller.window.update_bend_data(
+                self.hist_bend_time,
+                self.hist_target1, self.hist_current1,
+                self.hist_target2, self.hist_current2
             )
 
-        # 电机/传感器数据
+        # 电机/传感器历史
         should_record_motor = (self.num_m > 0 and self.motor_data and len(self.motor_data) == self.num_m)
         should_record_sensor = (self.num_s > 0 and self.sensor_data and len(self.sensor_data) == self.num_s)
 
@@ -1146,9 +1084,7 @@ class DeviceTab(QWidget):
             else:
                 self.hist_sensors.append([])
 
-            # 保持最近60s的点
-            time_window = 60.0  # 秒
-            while self.hist_time and self.hist_time[0] < current_time_sec - time_window:
+            while self.hist_time and self.hist_time[0] < current_time_sec - 60:
                 self.hist_time.pop(0)
                 if self.hist_motors:
                     self.hist_motors.pop(0)
@@ -1156,42 +1092,36 @@ class DeviceTab(QWidget):
                     self.hist_sensors.pop(0)
 
         if hasattr(self, 'active_graph_controller') and self.active_graph_controller:
-            # 检查对应的 UI 窗口是否可见
             if hasattr(self, 'active_graph_ui') and self.active_graph_ui and self.active_graph_ui.isVisible():
                 if self.active_type == 'motor' and self.hist_motors and len(self.hist_motors) > 0:
                     valid_motor_data = [data for data in self.hist_motors if data and len(data) > 0]
                     valid_times = self.hist_time[-len(valid_motor_data):] if valid_motor_data else []
                     self.active_graph_controller.update_multi_data(valid_times, valid_motor_data)
-                    if valid_motor_data and len(valid_motor_data) > 0:
-                        self.active_graph_controller.update_multi_data(valid_times, valid_motor_data)
                 elif self.active_type == 'sensor' and self.hist_sensors and len(self.hist_sensors) > 0:
                     valid_sensor_data = [data for data in self.hist_sensors if data and len(data) > 0]
                     valid_times = self.hist_time[-len(valid_sensor_data):] if valid_sensor_data else []
-                    if valid_sensor_data and len(valid_sensor_data) > 0:
-                        self.active_graph_controller.update_multi_data(valid_times, valid_sensor_data)
+                    self.active_graph_controller.update_multi_data(valid_times, valid_sensor_data)
 
     def open_bend_graph(self):
-        """打开弯曲角度历史曲线窗口"""
         if self.bend_graph_window is None:
             from UI.graph_window import BendGraphWindow
             from Core.GraphController import BendGraphController
             self.bend_graph_window = BendGraphWindow(self)
             self.bend_graph_controller = BendGraphController(self.bend_graph_window, self)
         self.bend_graph_window.show()
-        self.bend_graph_window.raise_()
-        # 立即更新数据
         if self.hist_bend_time:
-            self.bend_graph_controller.window.update_data(
-                self.hist_bend_time, self.hist_bend_target, self.hist_bend_current
+            self.bend_graph_controller.window.update_bend_data(
+                self.hist_bend_time,
+                self.hist_target1, self.hist_current1,
+                self.hist_target2, self.hist_current2
             )
 
-    #----------辅助函数----------------#
+    # ---------- 辅助：自定义 SpinBox ----------
     def _create_custom_spinbox(self, min_val, max_val, default, prefix='', suffix='', step=1.0):
-        """创建带自定义 +/- 按钮的 SpinBox 组合控件"""
         container = QWidget()
         layout = QHBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(2)
+        layout.setSpacing(4)
 
         spin = QDoubleSpinBox()
         spin.setRange(min_val, max_val)
@@ -1201,63 +1131,33 @@ class DeviceTab(QWidget):
         if suffix:
             spin.setSuffix(suffix)
         spin.setSingleStep(step)
-
         spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
         spin.setStyleSheet("""
             QDoubleSpinBox {
                 min-height: 34px;
                 font-size: 10pt;
                 font-weight: bold;
-                border: 2px solid #b0b0b0;
+                border: 1px solid #cfe2f2;
                 border-radius: 10px;
                 background: white;
-                padding-right: 5px;
+                padding: 4px 8px;
+                color: #1a3b4f;
             }
             QDoubleSpinBox:focus {
-                border-color: #0078D7;
+                border-color: #1e6f9f;
             }
         """)
 
         btn_plus = QPushButton("+")
         btn_plus.setFixedSize(34, 34)
         btn_plus.setCursor(Qt.PointingHandCursor)
-        btn_plus.setStyleSheet("""
-            QPushButton {
-                background-color: #f2f2f2;
-                border: 2px solid #b0b0b0;
-                border-radius: 5px;
-                font-size: 10pt;
-                font-weight: bold;
-                color: #333;
-            }
-            QPushButton:hover {
-                background-color: #e0e0e0;
-            }
-            QPushButton:pressed {
-                background-color: #c0c0c0;
-            }
-        """)
+        btn_plus.setProperty("spinBoxButton", True)
         btn_plus.clicked.connect(lambda: spin.stepUp())
 
         btn_minus = QPushButton("−")
         btn_minus.setFixedSize(34, 34)
         btn_minus.setCursor(Qt.PointingHandCursor)
-        btn_minus.setStyleSheet("""
-            QPushButton {
-                background-color: #f2f2f2;
-                border: 2px solid #b0b0b0;
-                border-radius: 5px;
-                font-size: 10pt;
-                font-weight: bold;
-                color: #333;
-            }
-            QPushButton:hover {
-                background-color: #e0e0e0;
-            }
-            QPushButton:pressed {
-                background-color: #c0c0c0;
-            }
-        """)
+        btn_minus.setProperty("spinBoxButton", True)
         btn_minus.clicked.connect(lambda: spin.stepDown())
 
         layout.addWidget(spin)
@@ -1266,3 +1166,16 @@ class DeviceTab(QWidget):
 
         container.spin = spin
         return container
+
+    def on_debug_changed(self, enabled):
+        if enabled:
+            if self.num_m == 0:
+                self.expand_device('motor')
+                self.logger("🐛 Debug 模式：已自动创建虚拟电机 ID:1")
+            if self.num_s == 0:
+                self.expand_device('sensor')
+                self.logger("🐛 Debug 模式：已自动创建虚拟传感器 ID:1")
+        else:
+            self.num_m = 0
+            self.num_s = 0
+            self.rebuild_cards()

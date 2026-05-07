@@ -256,7 +256,7 @@ HAL_StatusTypeDef HAL_EXTI_GetConfigLine(EXTI_HandleTypeDef *hexti, EXTI_ConfigT
   linepos = (pExtiConfig->Line & EXTI_PIN_MASK);
   maskline = (1uL << linepos);
 
-  /* 1] Get Core mode : interrupt */
+  /* 1] Get core mode : interrupt */
 
   /* Check if selected line is enable */
   if ((EXTI->IMR & maskline) != 0x00u)

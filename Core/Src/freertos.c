@@ -51,14 +51,14 @@
 osThreadId_t CmdCtrlTaskHandle;
 const osThreadAttr_t CmdCtrlTask_attributes = {
   .name = "CmdCtrlTask",
-  .stack_size = 256 * 4,
+  .stack_size = 128 * 8,
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for DataTask */
 osThreadId_t DataTaskHandle;
 const osThreadAttr_t DataTask_attributes = {
   .name = "DataTask",
-  .stack_size = 256 * 4,
+  .stack_size = 128 * 8,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for CmdCtrlQueue */
@@ -66,10 +66,10 @@ osMessageQueueId_t CmdCtrlQueueHandle;
 const osMessageQueueAttr_t CmdCtrlQueue_attributes = {
   .name = "CmdCtrlQueue"
 };
-/* Definitions for CmdQueue */
-osMessageQueueId_t CmdQueueHandle;
-const osMessageQueueAttr_t CmdQueue_attributes = {
-  .name = "CmdQueue"
+/* Definitions for MotorRxQueue */
+osMessageQueueId_t MotorRxQueueHandle;
+const osMessageQueueAttr_t MotorRxQueue_attributes = {
+  .name = "MotorRxQueue"
 };
 /* Definitions for SensorMessageQueue */
 osMessageQueueId_t SensorMessageQueueHandle;
@@ -118,14 +118,14 @@ void MX_FREERTOS_Init(void) {
   /* creation of CmdCtrlQueue */
   CmdCtrlQueueHandle = osMessageQueueNew (256, sizeof(uint8_t), &CmdCtrlQueue_attributes);
 
-  /* creation of CmdQueue */
-  CmdQueueHandle = osMessageQueueNew (32, sizeof(uint8_t), &CmdQueue_attributes);
+  /* creation of MotorRxQueue */
+  MotorRxQueueHandle = osMessageQueueNew (512, sizeof(uint8_t), &MotorRxQueue_attributes);
 
   /* creation of SensorMessageQueue */
-  SensorMessageQueueHandle = osMessageQueueNew (512, sizeof(uint8_t), &SensorMessageQueue_attributes);
+  SensorMessageQueueHandle = osMessageQueueNew (128, sizeof(uint8_t), &SensorMessageQueue_attributes);
 
   /* creation of CmdDataQueue */
-  CmdDataQueueHandle = osMessageQueueNew (512, sizeof(uint8_t), &CmdDataQueue_attributes);
+  CmdDataQueueHandle = osMessageQueueNew (128, sizeof(uint8_t), &CmdDataQueue_attributes);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */

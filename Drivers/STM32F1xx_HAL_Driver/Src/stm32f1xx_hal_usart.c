@@ -29,7 +29,7 @@
     The USART HAL driver can be used as follows:
 
     (#) Declare a USART_HandleTypeDef handle structure (eg. USART_HandleTypeDef husart).
-    (#) Initialize the USART low level Resources by implementing the HAL_USART_MspInit() API:
+    (#) Initialize the USART low level resources by implementing the HAL_USART_MspInit() API:
         (##) Enable the USARTx interface clock.
         (##) USART pins configuration:
              (+++) Enable the clock for the USART GPIOs.

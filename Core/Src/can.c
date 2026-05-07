@@ -1,9 +1,3 @@
-
-
-
-
-
-
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
@@ -50,9 +44,9 @@ void MX_CAN_Init(void)
   hcan.Init.TimeSeg1 = CAN_BS1_9TQ;
   hcan.Init.TimeSeg2 = CAN_BS2_2TQ;
   hcan.Init.TimeTriggeredMode = DISABLE;
-  hcan.Init.AutoBusOff = ENABLE; // 启用自动恢复
+  hcan.Init.AutoBusOff = DISABLE;
   hcan.Init.AutoWakeUp = DISABLE;
-  hcan.Init.AutoRetransmission = ENABLE; //启用自动重传
+  hcan.Init.AutoRetransmission = DISABLE;
   hcan.Init.ReceiveFifoLocked = DISABLE;
   hcan.Init.TransmitFifoPriority = DISABLE;
   if (HAL_CAN_Init(&hcan) != HAL_OK)

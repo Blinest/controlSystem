@@ -240,8 +240,8 @@ __WEAK IRQn_ID_t IRQ_GetActiveIRQ (void) {
   __DSB();
 
   /* Workaround GIC 390 errata 733075 (GIC-390_Errata_Notice_v6.pdf, 09-Jul-2014)  */
-  /* The following workaround code is for a single-Core system.  It would be       */
-  /* different in a multi-Core system.                                             */
+  /* The following workaround code is for a single-core system.  It would be       */
+  /* different in a multi-core system.                                             */
   /* If the ID is 0 or 0x3FE or 0x3FF, then the GIC CPU interface may be locked-up */
   /* so unlock it, otherwise service the interrupt as normal.                      */
   /* Special IDs 1020=0x3FC and 1021=0x3FD are reserved values in GICv1 and GICv2  */

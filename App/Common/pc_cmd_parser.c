@@ -11,6 +11,7 @@
 #include "Motor/Motor.h"
 #include "Sensor/Sensor.h"
 #include "CR/kinematic.h"
+#include "CR/CR.h"
 #include "usart.h"
 #include "cmsis_os2.h"
 #include "string.h"
@@ -94,18 +95,15 @@ static void pc_cmd_parse_and_execute(void)
             	case FUNC_MOTOR_CLOSE:
             		for (int i = 0; i < MOTOR_NUM; i++)
             		{
-						motor_enable(global_motor[i].id, false);
-            			//vTaskDelay(pdMS_TO_TICKS(10));
-            			HAL_Delay(1);
+						motor_enable(motor_ctx[i].global_motor.id, false);
+            			HAL_Delay(5);
 					}
-
             		break;
-
 		        case FUNC_MOTOR_ENABLE: // 电机使能
             		for (int i = 0; i < MOTOR_NUM; i++)
             		{
-            			motor_enable(global_motor[i].id, true);
-            			HAL_Delay(1);
+            			motor_enable(motor_ctx[i].global_motor.id, true);
+            			HAL_Delay(15);
             		}
             		break;
 
@@ -116,12 +114,11 @@ static void pc_cmd_parse_and_execute(void)
                 case FUNC_MOTOR_SINGLE:
                     // 单电机控制: 地址 + 方向 + 距离 + 速度 + 加速度 (1 + 2 + 2 + 2)
                     if (data_len >= 8) {
-
                         uint8_t addr = s_ctrlBuf[3];      // 电机地址
                         uint8_t direction = s_ctrlBuf[4]; // 方向 (1:负方向, 0:正方向)
-                        uint16_t distance = (s_ctrlBuf[5] << 8) | s_ctrlBuf[6]; // 距离
-                        uint16_t vel = (s_ctrlBuf[7] << 8) | s_ctrlBuf[8]; // 速度
-                    	uint16_t acc = (s_ctrlBuf[9] << 8) | s_ctrlBuf[10]; // 加速度
+                        uint16_t distance = (s_ctrlBuf[5] << 8) | s_ctrlBuf[6]; // 角度
+                        uint16_t vel = (s_ctrlBuf[7] << 8) | s_ctrlBuf[8]; // 角速度
+                    	uint16_t acc = (s_ctrlBuf[9] << 8) | s_ctrlBuf[10]; // 角加速度
 						// 调用单电机控制函数
                         motor_single_control(addr - 1, direction, (float)distance / 100.0f, (float)vel / 100.0f);
                     }
@@ -141,22 +138,29 @@ static void pc_cmd_parse_and_execute(void)
 	                        distances[i] =(float)((s_ctrlBuf[5 + i*2] << 8) | s_ctrlBuf[6 + i*2]);
 	                        if (distances[i] != 0) temp++;
 						}
-						temp == 0 ? auto_straight() : motor_sync_control(count, start_idx, distances);
+						temp == 0 ? autoStraight() : motor_sync_control(count, start_idx, distances);
                     }
                     break;
                     
                 case FUNC_MOTOR_KINEMATIC:
                     // 基于运动学的协同控制
-                    // 数据格式: [theta][phi]
-                    if (data_len >= 7) {
-                        uint8_t R = s_ctrlBuf[3]; // 半径参数
-                        float theta = (float)((int16_t)((s_ctrlBuf[4] << 8) | s_ctrlBuf[5])) / 100.0f; // 角度θ
-                        float phi = (float)((int16_t)((s_ctrlBuf[6] << 8) | s_ctrlBuf[7])) / 100.0f;   // 角度φ
-                        
+                    // 数据包格式: [dir1][theta1][dir2][theta2]
+                    if (data_len == 6) {
+                    	int dir[2]; float theta[2];
+                        dir[0] = s_ctrlBuf[3]; // 第一段方向
+                    	theta[0] = (float)((int16_t)((s_ctrlBuf[4] << 8) | s_ctrlBuf[5])) / 100.0f * 3.1415926535f / 180; // 角度theta1
+                    	dir[1] = s_ctrlBuf[6];
+                        theta[1] = (float)((int16_t)((s_ctrlBuf[7] << 8) | s_ctrlBuf[8])) / 100.0f * 3.1415926535f / 180;   // 角度theta2
                         // 计算肌腱长度变化
-                        float deltaL[4] = {0};
+                        float deltaL[MOTOR_NUM] = {0};
                     	// 调用运动学模型并执行控制指令
-                    	motor_kinematic_control(calculate_L(R, theta, phi , deltaL), R, theta, phi, deltaL);
+                    	motor_kinematic_control(calculate_L, CR.parameter.r, theta, dir, deltaL);
+                    	// char str1[30];
+                    	// sprintf(str1, "theta: %d\n", (int)theta[0]);
+                    	// Usart_SendString(&huart1, str1, strlen(str1));
+                    	// char str2[30];
+                    	// sprintf(str2, "theta: %d\n", (int)theta[1]);
+                    	// Usart_SendString(&huart1, str2, strlen(str2));
                     }
                     break;
                     
@@ -171,19 +175,14 @@ static void pc_cmd_parse_and_execute(void)
                                 uint8_t addr = s_ctrlBuf[4];
                                 if (addr == 0xFE) {
                                     // 喷管弯曲指令: 地址=0xFE, 方向, 角度
-                                    uint8_t direction = s_ctrlBuf[5];
-                                    uint16_t angle = (s_ctrlBuf[6] << 8) | s_ctrlBuf[7];
-									double val = (double)angle / 100;
-                                    // 调用喷管弯曲控制函数
-                                	char dir = direction == 0? 'u': 'd';
-                                	armBend(1, dir, val);
+         //                            uint8_t direction = s_ctrlBuf[5];
+         //                            uint16_t angle = (s_ctrlBuf[6] << 8) | s_ctrlBuf[7];
+									// double val = (double)angle / 100;
+         //                            // 调用喷管弯曲控制函数
+         //                        	char dir = direction == 0? 'u': 'd';
+         //                        	armBend(1, dir, val);
 
                                 } else if (addr == 0xFD) {
-                                    // 截面收缩指令: 地址=0xFD, 方向, 比例
-                                    uint8_t direction = s_ctrlBuf[5];
-                                    uint16_t scale = (s_ctrlBuf[6] << 8) | s_ctrlBuf[7];
-									float val = (float)scale / 100.f;
-                                	scale_squared(direction, val);
 
 
                                 } else if (data_len >= 8) {
@@ -205,9 +204,7 @@ static void pc_cmd_parse_and_execute(void)
                                     for (int i = 0; i < param_len; i++) {
                                         params[i] = s_ctrlBuf[3 + i];
                                     }
-                                    
-                                    // 调用自定义控制函数
-                                    motor_custom_control(count, params);
+
                                 }
                             } else {
                                 // 正常的自定义电机控制
@@ -218,9 +215,7 @@ static void pc_cmd_parse_and_execute(void)
                                 for (int i = 0; i < param_len; i++) {
                                     params[i] = s_ctrlBuf[3 + i];
                                 }
-                                
-                                // 调用自定义控制函数
-                                motor_custom_control(count, params);
+
                             }
                         }
                     }

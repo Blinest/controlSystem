@@ -115,7 +115,7 @@
            (++) Data Transfer mode
            (++) DPSM Status (Enable or Disable)
                                      
-      (#) Configure the SDMMC Resources to receive the data from the card
+      (#) Configure the SDMMC resources to receive the data from the card
           according to selected transfer mode (Refer to Step 8, 9 and 10).
   
       (#) Send the selected Read command (refer to step 11).
@@ -135,7 +135,7 @@
           (++) Data Transfer mode
           (++) DPSM Status (Enable or Disable)
   
-     (#) Configure the SDMMC Resources to send the data to the card according to
+     (#) Configure the SDMMC resources to send the data to the card according to 
          selected transfer mode.
                      
      (#) Send the selected Write command.

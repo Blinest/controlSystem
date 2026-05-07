@@ -13,19 +13,20 @@
 typedef struct CR_Parameter
 {
 	double r;
+
 } CR_Parameter;
 
-typedef struct JointSpace
-{
-	float phi;
-	float theta;
-	float deltaL[3]; //这里不使用 deltal[0]
-} JointSpace;
 
-typedef struct OperationSpace
+
+typedef struct Joint_Space
 {
-	float scale;
-}OperationSpace;
+	float current_phi[2];
+	float current_theta[2];
+	float target_phi[2];
+	float target_theta[2];
+	float current_deltaL[6];
+	float target_deltaL[6];
+} Joint_Space;
 
 typedef struct ArmParams
 {
@@ -40,22 +41,21 @@ typedef struct ArmParams
 	double direction_gain[4]; //方向增益，对应(u,r,d,l)
 } ArmParams;
 
-typedef struct LQTS
+typedef struct ContinuumRobot
 {
-	JointSpace joint_space;
-	OperationSpace operation_space;
+	Joint_Space joint_space;
 	CR_Parameter parameter;
-	ArmParams arm_params;
+	ArmParams arm_params[2];
 	bool state;
-} LQTS;
+} ContinuumRobot;
 
-void LQTS_init(void);
+void CR_init(void);
 uint8_t armBend(int seg, char direction, double val);
 uint8_t armBend_edit(int seg, char direction, double val, double g_u, double g_r, double g_d, double g_l, double seg1_limit, double seg2_limit);
 void deltaL_update(void);
-void auto_straight(void);
+void autoStraight(void);
 int direction_to_index(char direction);
-void scale_squared(uint8_t direction, float val);
 double tendonCompensation(int seg, char direction, double angle_deg);
-extern LQTS lqts;
+extern ContinuumRobot CR;
 #endif
+

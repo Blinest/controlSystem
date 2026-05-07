@@ -23,7 +23,7 @@ class LoginWindow(QDialog):
 
     def _init_ui(self):
         """初始化UI"""
-        self.setWindowTitle("系统登录 - LQTS喷管控制平台")
+        self.setWindowTitle("系统登录 - 柔性臂控制平台")
         screen = QApplication.primaryScreen().availableGeometry()
         self.resize(int(screen.width() * 0.1), int(screen.height() * 0.5))
         self.setMinimumSize(600, 480)   # 防止缩得过小导致控件挤爆
@@ -43,7 +43,7 @@ class LoginWindow(QDialog):
         layout.setContentsMargins(40, 40, 40, 40)
 
         # 标题
-        title = QLabel("LQTS喷管控制平台")
+        title = QLabel("柔性臂控制平台")
         title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet(
             "font-size: 15pt; font-weight: bold; color: black; "

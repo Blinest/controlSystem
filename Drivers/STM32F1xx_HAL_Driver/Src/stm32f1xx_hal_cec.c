@@ -30,7 +30,7 @@
     The CEC HAL driver can be used as follow:
 
     (#) Declare a CEC_HandleTypeDef handle structure.
-    (#) Initialize the CEC low level Resources by implementing the HAL_CEC_MspInit ()API:
+    (#) Initialize the CEC low level resources by implementing the HAL_CEC_MspInit ()API:
         (##) Enable the CEC interface clock.
         (##) CEC pins configuration:
             (+++) Enable the clock for the CEC GPIOs.

@@ -40,11 +40,11 @@
             ##### How to use this driver #####
   ==============================================================================
     [..]
-     (#) Initialize the TIM low level Resources by implementing the following functions
+     (#) Initialize the TIM low level resources by implementing the following functions
          depending on the selected feature:
            (++) Hall Sensor output : HAL_TIMEx_HallSensor_MspInit()
 
-     (#) Initialize the TIM low level Resources :
+     (#) Initialize the TIM low level resources :
         (##) Enable the TIM interface clock using __HAL_RCC_TIMx_CLK_ENABLE();
         (##) TIM pins configuration
             (+++) Enable the clock for the TIM GPIOs using the following function:

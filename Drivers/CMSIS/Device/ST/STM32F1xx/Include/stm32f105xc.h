@@ -12381,16 +12381,16 @@ typedef struct
 #define DBGMCU_CR_DBG_WWDG_STOP             DBGMCU_CR_DBG_WWDG_STOP_Msk        /*!< Debug Window Watchdog stopped when Core is halted */
 #define DBGMCU_CR_DBG_TIM1_STOP_Pos         (10U)                              
 #define DBGMCU_CR_DBG_TIM1_STOP_Msk         (0x1UL << DBGMCU_CR_DBG_TIM1_STOP_Pos) /*!< 0x00000400 */
-#define DBGMCU_CR_DBG_TIM1_STOP             DBGMCU_CR_DBG_TIM1_STOP_Msk        /*!< TIM1 counter stopped when Core is halted */
+#define DBGMCU_CR_DBG_TIM1_STOP             DBGMCU_CR_DBG_TIM1_STOP_Msk        /*!< TIM1 counter stopped when core is halted */
 #define DBGMCU_CR_DBG_TIM2_STOP_Pos         (11U)                              
 #define DBGMCU_CR_DBG_TIM2_STOP_Msk         (0x1UL << DBGMCU_CR_DBG_TIM2_STOP_Pos) /*!< 0x00000800 */
-#define DBGMCU_CR_DBG_TIM2_STOP             DBGMCU_CR_DBG_TIM2_STOP_Msk        /*!< TIM2 counter stopped when Core is halted */
+#define DBGMCU_CR_DBG_TIM2_STOP             DBGMCU_CR_DBG_TIM2_STOP_Msk        /*!< TIM2 counter stopped when core is halted */
 #define DBGMCU_CR_DBG_TIM3_STOP_Pos         (12U)                              
 #define DBGMCU_CR_DBG_TIM3_STOP_Msk         (0x1UL << DBGMCU_CR_DBG_TIM3_STOP_Pos) /*!< 0x00001000 */
-#define DBGMCU_CR_DBG_TIM3_STOP             DBGMCU_CR_DBG_TIM3_STOP_Msk        /*!< TIM3 counter stopped when Core is halted */
+#define DBGMCU_CR_DBG_TIM3_STOP             DBGMCU_CR_DBG_TIM3_STOP_Msk        /*!< TIM3 counter stopped when core is halted */
 #define DBGMCU_CR_DBG_TIM4_STOP_Pos         (13U)                              
 #define DBGMCU_CR_DBG_TIM4_STOP_Msk         (0x1UL << DBGMCU_CR_DBG_TIM4_STOP_Pos) /*!< 0x00002000 */
-#define DBGMCU_CR_DBG_TIM4_STOP             DBGMCU_CR_DBG_TIM4_STOP_Msk        /*!< TIM4 counter stopped when Core is halted */
+#define DBGMCU_CR_DBG_TIM4_STOP             DBGMCU_CR_DBG_TIM4_STOP_Msk        /*!< TIM4 counter stopped when core is halted */
 #define DBGMCU_CR_DBG_CAN1_STOP_Pos         (14U)                              
 #define DBGMCU_CR_DBG_CAN1_STOP_Msk         (0x1UL << DBGMCU_CR_DBG_CAN1_STOP_Pos) /*!< 0x00004000 */
 #define DBGMCU_CR_DBG_CAN1_STOP             DBGMCU_CR_DBG_CAN1_STOP_Msk        /*!< Debug CAN1 stopped when Core is halted */
@@ -12402,13 +12402,13 @@ typedef struct
 #define DBGMCU_CR_DBG_I2C2_SMBUS_TIMEOUT    DBGMCU_CR_DBG_I2C2_SMBUS_TIMEOUT_Msk /*!< SMBUS timeout mode stopped when Core is halted */
 #define DBGMCU_CR_DBG_TIM5_STOP_Pos         (18U)                              
 #define DBGMCU_CR_DBG_TIM5_STOP_Msk         (0x1UL << DBGMCU_CR_DBG_TIM5_STOP_Pos) /*!< 0x00040000 */
-#define DBGMCU_CR_DBG_TIM5_STOP             DBGMCU_CR_DBG_TIM5_STOP_Msk        /*!< TIM5 counter stopped when Core is halted */
+#define DBGMCU_CR_DBG_TIM5_STOP             DBGMCU_CR_DBG_TIM5_STOP_Msk        /*!< TIM5 counter stopped when core is halted */
 #define DBGMCU_CR_DBG_TIM6_STOP_Pos         (19U)                              
 #define DBGMCU_CR_DBG_TIM6_STOP_Msk         (0x1UL << DBGMCU_CR_DBG_TIM6_STOP_Pos) /*!< 0x00080000 */
-#define DBGMCU_CR_DBG_TIM6_STOP             DBGMCU_CR_DBG_TIM6_STOP_Msk        /*!< TIM6 counter stopped when Core is halted */
+#define DBGMCU_CR_DBG_TIM6_STOP             DBGMCU_CR_DBG_TIM6_STOP_Msk        /*!< TIM6 counter stopped when core is halted */
 #define DBGMCU_CR_DBG_TIM7_STOP_Pos         (20U)                              
 #define DBGMCU_CR_DBG_TIM7_STOP_Msk         (0x1UL << DBGMCU_CR_DBG_TIM7_STOP_Pos) /*!< 0x00100000 */
-#define DBGMCU_CR_DBG_TIM7_STOP             DBGMCU_CR_DBG_TIM7_STOP_Msk        /*!< TIM7 counter stopped when Core is halted */
+#define DBGMCU_CR_DBG_TIM7_STOP             DBGMCU_CR_DBG_TIM7_STOP_Msk        /*!< TIM7 counter stopped when core is halted */
 #define DBGMCU_CR_DBG_CAN2_STOP_Pos         (21U)                              
 #define DBGMCU_CR_DBG_CAN2_STOP_Msk         (0x1UL << DBGMCU_CR_DBG_CAN2_STOP_Pos) /*!< 0x00200000 */
 #define DBGMCU_CR_DBG_CAN2_STOP             DBGMCU_CR_DBG_CAN2_STOP_Msk        /*!< Debug CAN2 stopped when Core is halted */

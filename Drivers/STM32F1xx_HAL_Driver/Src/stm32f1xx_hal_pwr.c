@@ -222,7 +222,7 @@ void HAL_PWR_DisableBkUpAccess(void)
     =====================================
      [..]
       The device features 3 low-power modes:
-      (+) Sleep mode: CPU clock off, all peripherals including Cortex-M3 Core peripherals like
+      (+) Sleep mode: CPU clock off, all peripherals including Cortex-M3 core peripherals like 
                       NVIC, SysTick, etc. are kept running
       (+) Stop mode: All clocks are stopped
       (+) Standby mode: 1.8V domain powered off

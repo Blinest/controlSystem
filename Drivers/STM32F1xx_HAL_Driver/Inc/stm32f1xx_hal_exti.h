@@ -66,7 +66,7 @@ typedef struct
 {
   uint32_t Line;      /*!< The Exti line to be configured. This parameter
                            can be a value of @ref EXTI_Line */
-  uint32_t Mode;      /*!< The Exit Mode to be configured for a Core.
+  uint32_t Mode;      /*!< The Exit Mode to be configured for a core.
                            This parameter can be a combination of @ref EXTI_Mode */
   uint32_t Trigger;   /*!< The Exti Trigger to be configured. This parameter
                            can be a value of @ref EXTI_Trigger */

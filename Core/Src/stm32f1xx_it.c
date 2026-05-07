@@ -22,6 +22,8 @@
 #include "stm32f1xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "usart.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -238,15 +240,7 @@ void TIM4_IRQHandler(void)
 void USART1_IRQHandler(void)
 {
   /* USER CODE BEGIN USART1_IRQn 0 */
-  extern void USART_RX_CustomHandler(UART_HandleTypeDef *huart);
-  USART_RX_CustomHandler(&huart1);
-  
-  /* 如果发生了接收相关的标志位，跳过 HAL 的处理，防止其因错误而关闭中断 */
-  if (__HAL_UART_GET_FLAG(&huart1, UART_FLAG_RXNE) || __HAL_UART_GET_FLAG(&huart1, UART_FLAG_ORE)) {
-      /* 已经被 CustomHandler 处理了，清除 HAL 可能感知的错误状态 */
-      huart1.ErrorCode = HAL_UART_ERROR_NONE;
-      return; 
-  }
+
   /* USER CODE END USART1_IRQn 0 */
   HAL_UART_IRQHandler(&huart1);
   /* USER CODE BEGIN USART1_IRQn 1 */
@@ -260,15 +254,9 @@ void USART1_IRQHandler(void)
 void USART2_IRQHandler(void)
 {
   /* USER CODE BEGIN USART2_IRQn 0 */
-  extern void USART_RX_CustomHandler(UART_HandleTypeDef *huart);
-  USART_RX_CustomHandler(&huart2);
-  
-  /* 如果发生了接收相关的标志位，跳过 HAL 的处理，防止其因错误而关闭中断 */
-  if (__HAL_UART_GET_FLAG(&huart2, UART_FLAG_RXNE) || __HAL_UART_GET_FLAG(&huart2, UART_FLAG_ORE)) {
-      /* 已经被 CustomHandler 处理了，清除 HAL 可能感知的错误状态 */
-      huart2.ErrorCode = HAL_UART_ERROR_NONE;
-      return; 
-  }
+
+
+
   /* USER CODE END USART2_IRQn 0 */
   HAL_UART_IRQHandler(&huart2);
   /* USER CODE BEGIN USART2_IRQn 1 */

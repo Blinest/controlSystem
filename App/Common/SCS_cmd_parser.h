@@ -1,0 +1,8 @@
+//
+// Created by rosding on 2026/5/3.
+//
+
+#ifndef CONTROLSYSTEM_SCS_CMD_PARSER_H
+#define CONTROLSYSTEM_SCS_CMD_PARSER_H
+
+#endif //CONTROLSYSTEM_SCS_CMD_PARSER_H
