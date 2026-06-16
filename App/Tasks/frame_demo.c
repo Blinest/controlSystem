@@ -4,7 +4,6 @@
  */
 #include <stdio.h>
 #include <stdbool.h>
-#include "emm42_frame.h"
 
 int main(void) {
     printf("=== Frame 打包/解包 Demo ===\n\n");

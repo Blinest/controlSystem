@@ -30,6 +30,7 @@ static void SensorUartSend(uint8_t *p_data, uint32_t uiSize)
 {
 	Usart_SendString(&huart1, p_data, uiSize);
 }
+
 static void CopeSensorData(uint32_t uiReg, uint32_t uiRegNum)
 {
 	int i;

@@ -36,6 +36,8 @@ add_executable(${CMAKE_PROJECT_NAME}
     BSP/Sensor/WT_IMU.c
     BSP/Sensor/WT_IMU.h
     BSP/Sensor/REG.h
+    BSP/Sensor/CMCU-06.c
+    BSP/Sensor/CMCU-06.h
 
 )
 
@@ -58,14 +60,11 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Common/cmd_packer.c
     App/CR/CR.c
     App/CR/kinematic.c
-    App/Common/can_driver.c
-    App/Common/can_driver.h
     BSP/Motor/Motor.c
     BSP/Sensor/IMU.c
     App/Common/XV2_cmd_parser.c
+    BSP/Motor/Emm_V5.c
     BSP/Sensor/Sensor.c
-    BSP/Motor/X_V2.c
-    BSP/Motor/motor_limits.c
 )
 
 # Add include paths

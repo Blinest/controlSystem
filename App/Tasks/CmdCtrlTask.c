@@ -11,8 +11,7 @@
 #include "cmsis_os2.h"
 #include "main.h"
 #include "string.h"
-#include "Common/can_driver.h"
-
+#include "CR/CR.h"
 #include "Common/pc_cmd_parser.h"
 #include "Motor/Motor.h"
 #include "stdio.h"
@@ -51,23 +50,42 @@ void StartCmdCtrlTask(void *argument)
     	static uint32_t last_send_time_motor = 0;
     	static uint32_t last_send_time_sensor = 0;
     	uint32_t current_time_motor = osKernelGetTickCount();
-    	uint32_t current_time_sensor = osKernelGetTickCount();
+		uint32_t current_time_sensor = osKernelGetTickCount();
 
-    	// 每500ms读取一次电机的状态数据
+    	// 每500ms读取一次电机的状态数据，并调用逆解解析器进行反馈解析
     	if ((current_time_motor - last_send_time_motor) >= 500)
     	{
     		// 电机状态检测，心跳检测
     		motor_status_check();
+    		
+    		// 解析当前臂体弯曲的角度
+
+    		for (int i = 0; i < MOTOR_NUM; i++)
+    		{
+    			CR.joint_space.current_deltaL[i] = motor_ctx[i].global_motor.stepper_motor.current_pos;
+    		}
+    		// 弧度制
+    		float theta[2], phi[2];
+    		inverse_kinematics(CR.parameter.r, CR.joint_space.current_deltaL, theta, phi);
+			// 角度制
+    		CR.joint_space.current_theta[0] = theta[0] * 180 / 3.14159265358979323846;
+    		CR.joint_space.current_theta[1] = theta[1] * 180 / 3.14159265358979323846;
+
     		last_send_time_motor = current_time_motor;
     	}
-    	// 每200ms读取一次传感器数据
+
+    	// 每200ms读取一次传感器的状态数据
     	if ((current_time_sensor - last_send_time_sensor) >= 200)
     	{
-    		sensor_single_read(0x50);
+    		// 读取传感器数据，目前只有一个传感器，地址为2
+    		sensor_single_read(2);
+
     		last_send_time_sensor = current_time_sensor;
     	}
+
 
     	// 添加小延时，避免过度占用CPU
     	osDelay(10);
 	  }
+
 }

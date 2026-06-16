@@ -1,6 +1,7 @@
 # Qt类
-from PyQt5.QtCore import QObject, Qt, QTimer
-from PyQt5.QtWidgets import QFileDialog, QMessageBox, QMenu
+from PyQt5.QtCore import QObject, QTimer, Qt
+from PyQt5.QtWidgets import QMenu, QMessageBox, QFileDialog
+from PyQt5.QtGui import QCursor
 
 # 自定义类
 from UI.graph_window import HistoryFileDialog
@@ -12,7 +13,10 @@ import csv
 import bisect
 import unicodedata
 import pyqtgraph as pg
+import numpy as np
 from datetime import datetime
+import threading
+
 class GraphController(QObject):
     def __init__(self, ui, is_history_mode=False):
         super().__init__()
@@ -41,8 +45,6 @@ class GraphController(QObject):
             if hasattr(self.ui, 'spin_interval') and self.ui.spin_interval is not None:
                 self.ui.spin_interval.hide()
 
-
-
     # ---------- 自动保存 ----------
     def _on_auto_save_toggled(self, checked):
         if checked:
@@ -58,12 +60,56 @@ class GraphController(QObject):
     def _auto_save(self):
         if not self._time_data or not self._data_matrix:
             return
+        # 只把当前数据的引用传给线程（不在此处拷贝）
+        time_ref = self._time_data
+        matrix_ref = self._data_matrix
+        filename = self._get_auto_filename()
+
+        thread = threading.Thread(target=self._save_to_csv_in_thread, args=(filename, time_ref, matrix_ref))
+        thread.daemon = True
+        thread.start()
+
+    def _save_to_csv_in_thread(self, filepath, time_ref, matrix_ref):
+        """后台线程：拷贝数据并写入 CSV，不操作 UI"""
         try:
-            filename = self._get_auto_filename()
-            self._save_to_csv(filename)
-            print(f"[自动保存] 成功写入 {filename}")
+            # 在子线程中做深拷贝（避免阻塞主线程）
+            time_data = time_ref[:]                     # 数字列表，浅拷贝足够
+            data_matrix = [step[:] for step in matrix_ref]  # 二维列表深拷贝
+
+            # 以下为原有保存逻辑（与之前一致）
+            if not time_data or not data_matrix:
+                return
+            num_devices = len(data_matrix[0]) if data_matrix else 0
+            prefix_name = "电机" if self.ui.is_motor else "传感器"
+            headers = ["时间"]
+            for i in range(num_devices):
+                if self.ui.is_motor:
+                    headers.extend([f"{prefix_name}{i+1}_位移",
+                                    f"{prefix_name}{i+1}_速度",
+                                    f"{prefix_name}{i+1}_加速度"])
+                else:
+                    headers.extend([f"{prefix_name}{i+1}_偏航X",
+                                    f"{prefix_name}{i+1}_偏航Y",
+                                    f"{prefix_name}{i+1}_偏航Z"])
+
+            rows = []
+            for t_idx in range(len(time_data)):
+                row = [round(time_data[t_idx], 2)]
+                for dev_idx in range(num_devices):
+                    if t_idx < len(data_matrix) and dev_idx < len(data_matrix[t_idx]) \
+                            and len(data_matrix[t_idx][dev_idx]) >= 3:
+                        row.extend(round(v, 4) for v in data_matrix[t_idx][dev_idx][:3])
+                    else:
+                        row.extend([0.0, 0.0, 0.0])
+                rows.append(row)
+
+            with open(filepath, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow(headers)
+                writer.writerows(rows)
+            print(f"[自动保存-线程] 成功写入 {filepath}")
         except Exception as e:
-            print(f"[自动保存] 失败: {e}")
+            print(f"[自动保存-线程] 失败: {e}")
 
     def _get_auto_filename(self):
         data_dir = self._ensure_data_dir()
@@ -72,7 +118,7 @@ class GraphController(QObject):
         return os.path.join(data_dir, f"{prefix}_auto_{timestamp}.csv")
     def _get_data_dir(self):
         """返回当前类型对应的数据子目录"""
-        base = os.path.expanduser("~/.lqts/analyze_data")
+        base = os.path.expanduser("~/experiment_data/data/assets/analyze_data")
         sub = "motor_data" if self.ui.is_motor else "sensor_data"
         return os.path.join(base, sub)
 
@@ -460,34 +506,243 @@ class GraphController(QObject):
         after = x_data[idx]
         return idx if (after - target_x) < (target_x - before) else idx - 1
 
-# 新建文件 ui/bend_graph_controller.py 或追加到 graph_controller.py
-class BendGraphController:
+class BendGraphController(QObject):
     def __init__(self, window, data_provider):
-        self.window = window
-        self.data_provider = data_provider   # 回调获取最新数据
+        super().__init__()
+        self.window = window              # BendGraphWindow 实例
+        self.data_provider = data_provider # DeviceTab 实例（或 None）
         self.window.set_controller(self)
 
-    def auto_focus(self):
+        # 用于点击显示的竖线（matplotlib 方式）
+        self.vline = self.window.ax.axvline(x=0, color='#FF0000', linestyle='--', linewidth=1, visible=False)
+        self._click_cid = self.window.canvas.mpl_connect('button_press_event', self._on_mouse_clicked)
+        self._context_cid = self.window.canvas.mpl_connect('button_press_event', self._on_right_click)
+
+        # 自动保存相关（需要窗口提供 chk_auto_save 和 spin_interval）
+        self.auto_save_timer = QTimer()
+        self.auto_save_timer.timeout.connect(self._auto_save)
+        if hasattr(self.window, 'chk_auto_save') and self.window.chk_auto_save is not None:
+            self.window.chk_auto_save.toggled.connect(self._on_auto_save_toggled)
+        if hasattr(self.window, 'spin_interval') and self.window.spin_interval is not None:
+            self.window.spin_interval.valueChanged.connect(self._on_interval_changed)
+        # 初始状态根据控件设置
+        if hasattr(self.window, 'chk_auto_save') and self.window.chk_auto_save.isChecked():
+            self._start_auto_save_timer()
+
+    # ---------- 自动保存 ----------
+    def _on_auto_save_toggled(self, checked):
+        if checked:
+            self._start_auto_save_timer()
+        else:
+            self.auto_save_timer.stop()
+
+    def _on_interval_changed(self, value):
+        if hasattr(self.window, 'chk_auto_save') and self.window.chk_auto_save.isChecked():
+            self.auto_save_timer.stop()
+            self.auto_save_timer.start(int(value * 1000))
+
+    def _start_auto_save_timer(self):
+        interval = int(self.window.spin_interval.value() * 1000) if hasattr(self.window, 'spin_interval') else 5000
+        self.auto_save_timer.start(interval)
+
+    def _auto_save(self):
         if not self.window.time_data:
             return
-        self.window.plot_widget.autoRange()
+        try:
+            filename = self._get_auto_filename()
+            self._save_to_csv(filename)
+            print(f"[自动保存] 成功写入 {filename}")
+        except Exception as e:
+            print(f"[自动保存] 失败: {e}")
 
-    def reset_view(self):
-        self.window.plot_widget.setRange(xRange=None, yRange=None, padding=0.05)
+    def _get_auto_filename(self):
+        data_dir = self._ensure_data_dir()
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return os.path.join(data_dir, f"bend_auto_{timestamp}.csv")
 
-    def save_data(self):
-        # 保存弯曲数据为 CSV
+    def _get_data_dir(self):
+        base = os.path.expanduser("~/experiment_data/data/assets/analyze_data")
+        return os.path.join(base, "bend_data")
+
+    def _ensure_data_dir(self):
+        data_dir = self._get_data_dir()
+        os.makedirs(data_dir, exist_ok=True)
+        return data_dir
+
+    # ---------- 数据保存 ----------
+    def save_data(self, use_dialog=True):
+        """保存数据，可选择弹出文件对话框"""
         if not self.window.time_data:
             QMessageBox.warning(self.window, "无数据", "没有数据可保存")
             return
-        # 生成文件名
-        now = datetime.now().strftime("%Y%m%d_%H%M%S")
-        base_dir = os.path.expanduser("~/.lqts/analyze_data/bend_data")
-        os.makedirs(base_dir, exist_ok=True)
-        fpath = os.path.join(base_dir, f"bend_angle_{now}.csv")
-        with open(fpath, 'w', newline='') as f:
+
+        if use_dialog:
+            data_dir = self._ensure_data_dir()
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            default_path = os.path.join(data_dir, f"bend_angle_{timestamp}.csv")
+            filename, _ = QFileDialog.getSaveFileName(
+                self.window, "保存弯曲角度数据", default_path,
+                "CSV Files (*.csv);;All Files (*)"
+            )
+            if not filename:
+                return
+        else:
+            filename = self._get_auto_filename()
+
+        try:
+            self._save_to_csv(filename)
+            QMessageBox.information(self.window, "保存成功", f"数据已保存至:\n{filename}")
+        except Exception as e:
+            QMessageBox.critical(self.window, "保存失败", str(e))
+
+    def _save_to_csv(self, filepath):
+        """写入 CSV 文件"""
+        with open(filepath, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
-            writer.writerow(["时间(秒)", "目标角度(deg)", "当前角度(deg)"])
-            for t, target, current in zip(self.window.time_data, self.window.target_data, self.window.current_data):
-                writer.writerow([f"{t:.3f}", f"{target:.3f}", f"{current:.3f}"])
-        QMessageBox.information(self.window, "保存成功", f"数据已保存至\n{fpath}")
+            writer.writerow(["时间(秒)", "第一段目标(deg)", "第一段当前(deg)",
+                             "第二段目标(deg)", "第二段当前(deg)"])
+            for t, t1, c1, t2, c2 in zip(self.window.time_data,
+                                         self.window.target1_data,
+                                         self.window.current1_data,
+                                         self.window.target2_data,
+                                         self.window.current2_data):
+                writer.writerow([f"{t:.3f}", f"{t1:.3f}", f"{c1:.3f}", f"{t2:.3f}", f"{c2:.3f}"])
+
+    # ---------- 视图控制 ----------
+    def auto_focus(self):
+        if self.window.time_data:
+            self.window.ax.relim()
+            self.window.ax.autoscale_view()
+            self.window.canvas.draw_idle()
+
+    def auto_focus_axis(self, axis='both'):
+        if axis in ('x', 'both') and self.window.time_data:
+            self.window.ax.set_xlim(min(self.window.time_data), max(self.window.time_data))
+        if axis in ('y', 'both'):
+            all_vals = (self.window.target1_data + self.window.current1_data +
+                        self.window.target2_data + self.window.current2_data)
+            if all_vals:
+                ymin, ymax = min(all_vals), max(all_vals)
+                if ymin == ymax:
+                    ymin -= 10
+                    ymax += 10
+                self.window.ax.set_ylim(ymin, ymax)
+        self.window.canvas.draw_idle()
+
+    def reset_view(self):
+        self.window.ax.set_xlim(auto=True)
+        self.window.ax.set_ylim(auto=True)
+        self.window.ax.relim()
+        self.window.ax.autoscale_view()
+        self.window.canvas.draw_idle()
+
+    # ---------- 历史数据加载 ----------
+    def load_history_file(self, file_path=None):
+        """加载 CSV 文件（若未提供路径则弹出对话框）"""
+        if file_path is None:
+            data_dir = self._ensure_data_dir()
+            file_path, _ = QFileDialog.getOpenFileName(
+                self.window, "选择历史数据文件", data_dir,
+                "CSV Files (*.csv);;All Files (*)"
+            )
+            if not file_path:
+                return
+
+        try:
+            time_vals, t1_vals, c1_vals, t2_vals, c2_vals = [], [], [], [], []
+            with open(file_path, 'r', encoding='utf-8-sig') as f:
+                reader = csv.reader(f)
+                next(reader)  # 跳过表头
+                for row in reader:
+                    if len(row) >= 5:
+                        time_vals.append(float(row[0]))
+                        t1_vals.append(float(row[1]))
+                        c1_vals.append(float(row[2]))
+                        t2_vals.append(float(row[3]))
+                        c2_vals.append(float(row[4]))
+            if not time_vals:
+                QMessageBox.warning(self.window, "无数据", "文件中没有有效数据行")
+                return
+
+            self.window.time_data = time_vals
+            self.window.target1_data = t1_vals
+            self.window.current1_data = c1_vals
+            self.window.target2_data = t2_vals
+            self.window.current2_data = c2_vals
+            self.window.update_plot()
+            self.auto_focus()
+            QMessageBox.information(self.window, "加载成功", f"已加载 {len(time_vals)} 个数据点")
+        except Exception as e:
+            QMessageBox.critical(self.window, "加载失败", f"错误详情：{str(e)}")
+
+    # ---------- 鼠标交互 ----------
+    def _on_mouse_clicked(self, event):
+        """左键点击显示竖线和数据坐标"""
+        if event.button != 1:  # 左键
+            return
+        if event.inaxes != self.window.ax:
+            return
+        click_x = event.xdata
+        if click_x is None or not self.window.time_data:
+            return
+
+        # 寻找最近的时间点索引
+        idx = self._find_nearest_index(self.window.time_data, click_x)
+        if idx is None:
+            return
+
+        actual_x = self.window.time_data[idx]
+        self.vline.set_xdata([actual_x])
+        self.vline.set_visible(True)
+
+        # 获取该索引处的各曲线值
+        t1 = self.window.target1_data[idx] if idx < len(self.window.target1_data) else 0
+        c1 = self.window.current1_data[idx] if idx < len(self.window.current1_data) else 0
+        t2 = self.window.target2_data[idx] if idx < len(self.window.target2_data) else 0
+        c2 = self.window.current2_data[idx] if idx < len(self.window.current2_data) else 0
+
+        info_lines = [
+            f"X = {actual_x:.3f}",
+            f"第一段目标: {t1:.3f} deg",
+            f"第一段当前: {c1:.3f} deg",
+            f"第二段目标: {t2:.3f} deg",
+            f"第二段当前: {c2:.3f} deg"
+        ]
+
+        # 如果窗口有 coord_label 控件则更新，否则在标题栏显示
+        if hasattr(self.window, 'coord_label') and self.window.coord_label is not None:
+            self.window.coord_label.setText("\n".join(info_lines))
+        else:
+            self.window.setWindowTitle(" | ".join(info_lines))
+
+        self.window.canvas.draw_idle()
+
+    def _on_right_click(self, event):
+        """右键菜单"""
+        if event.button != 3:  # 右键
+            return
+        # 不要求点击在axes内，菜单始终弹出
+        menu = QMenu()
+        focus_menu = menu.addMenu("聚焦选项")
+        focus_menu.addAction("一键聚焦", self.auto_focus)
+        focus_menu.addAction("X轴聚焦", lambda: self.auto_focus_axis('x'))
+        focus_menu.addAction("Y轴聚焦", lambda: self.auto_focus_axis('y'))
+        focus_menu.addSeparator()
+        focus_menu.addAction("重置视图", self.reset_view)
+        menu.addSeparator()
+        save_menu = menu.addMenu("数据保存")
+        save_menu.addAction("保存当前数据", lambda: self.save_data(True))
+        save_menu.addAction("加载历史数据", lambda: self.load_history_file())
+        menu.exec_(QCursor.pos())
+
+    def _find_nearest_index(self, x_data, target_x):
+        """二分查找最接近目标值的索引"""
+        if not x_data:
+            return None
+        arr = np.asarray(x_data)
+        idx = np.searchsorted(arr, target_x)
+        if idx == 0:
+            return 0
+        if idx == len(arr):
+            return len(arr) - 1
+        return idx if (arr[idx] - target_x) < (target_x - arr[idx - 1]) else idx - 1

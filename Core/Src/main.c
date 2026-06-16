@@ -28,7 +28,7 @@
 #include <stdio.h>
 
 #include "CR/CR.h"
-#include "../App/Common/can_driver.h"
+
 #include "string.h"
 /* USER CODE END Includes */
 
@@ -102,9 +102,8 @@ int main(void)
   UART2_Receive_Start();
   // 启动串口1的中断接收
   UART1_Receive_Start();
-  // 启动 CAN
-  CAN_Driver_Init();
-  LQTS_init();
+
+	CR_init();
 
   /* USER CODE END 2 */
 

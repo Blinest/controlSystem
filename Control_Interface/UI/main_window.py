@@ -32,7 +32,7 @@ class MainWindow(QMainWindow):
     def __init__(self, auth_service=None):
         super().__init__()
         self.auth_service = auth_service  # 保存认证服务引用
-        self.setWindowTitle("LQTS喷管控制界面")
+        self.setWindowTitle("柔性臂控制界面")
         # 设置窗口标志，确保最大化窗口可用
         self.setWindowFlags(self.windowFlags() | Qt.WindowMaximizeButtonHint)
 
@@ -40,8 +40,9 @@ class MainWindow(QMainWindow):
         # 根据分辨率自动动态设置窗口大小
         screen = QApplication.primaryScreen()
         size = screen.availableGeometry().size()
-        new_height = min(size.height(), 800)
-        self.resize(size.width(), new_height)
+        new_height = min(size.height(), 1200)
+        new_width = min(size.width(), 1500)
+        self.resize(new_width, new_height)
         self.devices = {}
         self.auto_added_ports = set()
         self.auto_connect_timer = QTimer()
@@ -78,11 +79,11 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self.btn_manual_add)
         toolbar.addSeparator()
         toolbar.addAction("📈 电机反馈数据曲线", lambda: self.open_graph('motor'))
-        toolbar.addAction("📉 IMU反馈数据曲线", lambda: self.open_graph('sensor'))
+        toolbar.addAction("📉 压力传感器反馈数据曲线", lambda: self.open_graph('sensor'))
         toolbar.addSeparator()
 
-        # 喷管弯曲历史曲线
-        toolbar.addAction("📊 喷管弯曲历史曲线", self.open_bend_graph)
+        # 柔性臂弯曲历史曲线
+        toolbar.addAction("📊 柔性臂弯曲数据曲线", self.open_bend_graph)
         toolbar.addSeparator()
 
         # 日志管理按钮 - 只有管理员可见
@@ -136,41 +137,264 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.BottomDockWidgetArea, dock_log)
 
         self.setStyleSheet("""
-            QMainWindow, QWidget { background: #d9d9d6; font-family: '微软雅黑 Control_Interface'; }
-            QPushButton { padding: 8px; border: 3px solid black; border-radius: 4px; background: #53565b;}
-            QPushButton[class="primary"] { border-radius: 25px;background: #0078D7; color:#a7a8aa; border: none;}
-            QPushButton[class="danger"] { border-radius: 15px; padding: 4px 12px;background: #D13438; color: #a7a8aa; border: none; font-weight: bold;font-size:10pt;}
-            QPushButton[class="success"] { border-radius: 15px;background: #107C10; color: #a7a8aa; border: none; font-weight: bold;font-size:10pt;}
-            QPushButton[class="emergency"] {border-radius: 15px;background-color: red;color: #a7a8aa; font-weight: bold;font-size: 10pt;border: none;}
-            QPushButton[class="emergency"]:hover { background-color: #A80000;}
-            QPushButton[class="emergency"]:pressed {background-color: #8A0000;}
-            QPushButton[class="page-btn"] {background-color: grey; color: white; font-weight: bold; border: 3px solid #ccc;border-radius: 4px;padding: 5px 10px;}
-            QGroupBox { border: 3px solid white; border-radius: 5px; margin-top: 15px; padding: 5px; font-weight:bold;}
-            QComboBox { padding: 4px; border: 2px solid white; border-radius: 3px; background: #d9d9d6; color: #333;}
-            QComboBox QAbstractItemView { background-color: white; color: white; border-radius: 12px;selection-background-color: #0078D7; selection-color: #FFFFFF; }
-            QMessageBox {
-                    background-color: #d9d9d6;
-                    color: white;
-                    border: 1px solid #e0e0e0;
-                    border-radius: 12px;
-                    padding: 8px;
-                    border-right: 4px solid #d0d0d0;
-                    border-bottom: 4px solid #d0d0d0;
-                }
-            QMessageBox QPushButton:default {
-                background-color: #53565b;
-                color: white;
+            /* ========== 全局 ========== */
+            QMainWindow, QWidget {
+                background-color: #fbf7f0;
+                color: #2e241b;
+                font-family: 'Segoe UI', '微软雅黑';
+            }
+        
+            /* ========== 通用按钮 ========== */
+            QPushButton {
+                background-color: #f0e9de;
+                color: #2e241b;
+                border: 1px solid #c4b49a;
+                border-radius: 3px;
+                padding: 3px 3px;
+                font-weight: normal;
+            }
+            QPushButton:hover {
+                background-color: #e8dfd0;
+                border-color: #b5956b;
+            }
+            QPushButton:pressed {
+                background-color: #d9cfbd;
+                border-color: #8b6f4c;
+                color: #1a120a;
+            }
+        
+            /* 主要操作按钮 (class="primary") */
+            QPushButton[class="primary"] {
+                background-color: #b5956b;
+                color: #fff8f0;
                 border: none;
-                border-radius: 12px;
-                }
-            QStatusBar {
-                background-color: #d7d2cb;
-                color: #333;
                 font-weight: bold;
-                border-top: 2px solid #ccc;
+                border-radius: 25px;
+            }
+            QPushButton[class="primary"]:hover {
+                background-color: #c6a77d;
+            }
+            QPushButton[class="primary"]:pressed {
+                background-color: #9a7b54;
+            }
+        
+            /* 危险/删除按钮 (class="danger") */
+            QPushButton[class="danger"] {
+                background-color: #c46b5b;
+                color: #fff8f0;
+                border: none;
+                font-weight: bold;
+                border-radius: 15px;
+                padding: 4px 12px;
+                font-size: 10pt;
+            }
+            QPushButton[class="danger"]:hover {
+                background-color: #d48476;
+            }
+            QPushButton[class="danger"]:pressed {
+                background-color: #a05247;
+            }
+        
+            /* 成功按钮 (class="success") */
+            QPushButton[class="success"] {
+                background-color: #7a8b5e;
+                color: #fff8f0;
+                border: none;
+                font-weight: bold;
+                border-radius: 15px;
+                font-size: 10pt;
+            }
+            QPushButton[class="success"]:hover {
+                background-color: #95a675;
+            }
+            QPushButton[class="success"]:pressed {
+                background-color: #627149;
+            }
+        
+            /* 紧急停止按钮 (class="emergency") */
+            QPushButton[class="emergency"] {
+                background-color: #c46b5b;
+                color: #fff8f0;
+                font-weight: bold;
+                font-size: 10pt;
+                border-radius: 15px;
+                border: none;
+            }
+            QPushButton[class="emergency"]:hover {
+                background-color: #d48476;
+            }
+            QPushButton[class="emergency"]:pressed {
+                background-color: #a05247;
+            }
+        
+            /* 页面导航按钮 (class="page-btn") */
+            QPushButton[class="page-btn"] {
+                background-color: #d9cfbd;
+                color: #2e241b;
+                font-weight: bold;
+                border: 1px solid #b5956b;
+                border-radius: 6px;
+                padding: 5px 10px;
+            }
+            QPushButton[class="page-btn"]:hover {
+                background-color: #e8dfd0;
+                border-color: #c6a77d;
+            }
+            QPushButton[class="page-btn"]:pressed {
+                background-color: #c4b49a;
+            }
+        
+            /* ========== 分组框 ========== */
+            QGroupBox {
+                background-color: #fdfaf5;
+                border: 1px solid #d9cfbd;
+                border-radius: 8px;
+                margin-top: 15px;
+                padding: 5px;
+                font-weight: bold;
+                color: #5a4636;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
+                color: #b5956b;
+            }
+        
+            /* ========== 下拉框 ========== */
+            QComboBox {
+                background-color: #fdfaf5;
+                color: #2e241b;
+                border: 1px solid #c4b49a;
+                border-radius: 3px;
+                padding: 3px 3px;
+            }
+            QComboBox:hover {
+                border-color: #b5956b;
+            }
+            QComboBox::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 20px;
+                border-left: 1px solid #c4b49a;
+                border-top-right-radius: 6px;
+                border-bottom-right-radius: 6px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #fbf7f0;
+                color: #2e241b;
+                selection-background-color: #b5956b;
+                selection-color: #fff8f0;
+                border-radius: 6px;
+                outline: none;
+            }
+        
+            /* ========== 编辑框 & 文本区域 ========== */
+            QLineEdit, QTextEdit {
+                background-color: #fdfaf5;
+                color: #2e241b;
+                border: 1px solid #c4b49a;
+                border-radius: 6px;
+                padding: 4px;
+                selection-background-color: #b5956b;
+                selection-color: #fff8f0;
+            }
+            QLineEdit:focus, QTextEdit:focus {
+                border-color: #b5956b;
+            }
+        
+            /* 日志专用样式（可通过 setObjectName 指定） */
+            QTextEdit#logMain {
+                background-color: #fdfaf5;
+                border: 1px solid #d9cfbd;
+            }
+            QTextEdit#logRaw {
+                background-color: #2e241b;
+                color: #c6a77d;
+                font-family: 'Consolas', 'Courier New';
+                border: 1px solid #8b6f4c;
+            }
+        
+            /* ========== 状态栏 ========== */
+            QStatusBar {
+                background-color: #ede4d3;
+                color: #5a4636;
+                font-weight: bold;
+                border-top: 1px solid #d9cfbd;
             }
             QStatusBar::item {
                 border: none;
+            }
+        
+            /* ========== 标签页 ========== */
+            QTabWidget::pane {
+                border: 1px solid #d9cfbd;
+                background-color: #fbf7f0;
+                border-radius: 6px;
+            }
+            QTabBar::tab {
+                background-color: #f0e9de;
+                color: #5a4636;
+                border: 1px solid #d9cfbd;
+                border-bottom: none;
+                border-top-left-radius: 6px;
+                border-top-right-radius: 6px;
+                padding: 6px 12px;
+                margin-right: 2px;
+            }
+            QTabBar::tab:selected {
+                background-color: #fdfaf5;
+                color: #b5956b;
+                font-weight: bold;
+            }
+            QTabBar::tab:hover:!selected {
+                background-color: #e8dfd0;
+            }
+        
+            /* ========== 工具栏 ========== */
+            QToolBar {
+                background-color: #fbf7f0;
+                border-bottom: 1px solid #d9cfbd;
+                spacing: 6px;
+                padding: 4px;
+            }
+            QToolBar QLabel {
+                color: #5a4636;
+                font-weight: normal;
+            }
+        
+            /* ========== 滚动条 ========== */
+            QScrollBar:vertical {
+                background: #fbf7f0;
+                width: 10px;
+                margin: 0;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical {
+                background: #c4b49a;
+                min-height: 20px;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #b5956b;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+        
+            /* ========== 提示框 ========== */
+            QMessageBox {
+                background-color: #fbf7f0;
+                color: #2e241b;
+                border: 1px solid #d9cfbd;
+                border-radius: 12px;
+            }
+            QMessageBox QLabel {
+                color: #2e241b;
+            }
+            QMessageBox QPushButton {
+                min-width: 80px;
+                min-height: 30px;
             }
         """)
 
@@ -263,20 +487,20 @@ class MainWindow(QMainWindow):
         print(f"DEBUG: _show_welcome 被调用, username={username}")  # 调试信息
 
         # 1. 更新窗口标题
-        self.setWindowTitle(f"LQTS喷管控制界面 - 当前用户: {username}")
+        self.setWindowTitle(f"柔性臂控制界面 - 当前用户: {username}")
 
         # 2. 状态栏显示
         self.statusBar().showMessage(f"👤 当前用户: {username} | ✅ 就绪", 0)
 
         # 3. 日志窗口显示
         self.log("=" * 50, level="INFO")
-        self.log(f"🎉 欢迎使用 LQTS 喷管控制平台", level="INFO")
+        self.log(f"🎉 欢迎使用柔性臂控制平台", level="INFO")
         self.log(f"👤 当前登录用户: {username}({self.role_text})", level="INFO")
         self.log(f"🕐 登录时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", level="INFO")
         self.log("=" * 50, level="INFO")
 
         # 4. 创建浮动提示
-        self._show_toast(f"{username}, 欢迎使用 LQTS 控制平台！")
+        self._show_toast(f"{username}, 欢迎使用柔性臂控制平台！")
 
     def _show_toast(self, message, duration=2000):
         """显示短暂的提示信息"""
@@ -371,6 +595,13 @@ class MainWindow(QMainWindow):
         else:
             self.text_raw.hide()
 
+        # 通知当前设备选项卡 Debug 状态变化
+        current_tab = self.tabs.currentWidget()
+        if current_tab and hasattr(current_tab, 'on_debug_changed'):
+            current_tab.on_debug_changed(state == Qt.Checked)
+        else:
+            print("No current tab with on_debug_changed")  # 调试输出
+
     def auto_check_target_port(self):
         all_ports = serial.tools.list_ports.comports()
         # 读取所有已有的端口，然后将他们放在数组中
@@ -415,10 +646,16 @@ class MainWindow(QMainWindow):
     def connect_port(self, port):
         if port in self.devices:
             return
-        dev_tab = DeviceTab(port, self.log)
+        dev_tab = DeviceTab(port, self.log, debug_check=self.chk_debug.isChecked)
         self.devices[port] = dev_tab
         self.tabs.addTab(dev_tab, f"📍 {port}")
         self.tabs.setCurrentWidget(dev_tab)
+
+        # 如果 Debug 模式已勾选，立即创建虚拟设备
+        if self.chk_debug.isChecked():
+            dev_tab.on_debug_changed(True)
+
+
         QTimer.singleShot(100, lambda: dev_tab.send_cmd(0xFE, "自动握手", "唤醒通信", is_motor=True))
 
     def add_device(self):
@@ -429,10 +666,14 @@ class MainWindow(QMainWindow):
         if port in self.devices:
             QMessageBox.warning(self, "提示", f"设备 {port} 已经添加")
             return
-        dev_tab = DeviceTab(port, self.log)
+        dev_tab = DeviceTab(port, self.log, debug_check=self.chk_debug.isChecked)
         self.devices[port] = dev_tab
         self.tabs.addTab(dev_tab, f"📍 {port}")
         self.tabs.setCurrentWidget(dev_tab)
+
+        if self.chk_debug.isChecked():
+            dev_tab.on_debug_changed(True)
+
         QTimer.singleShot(100, lambda: dev_tab.send_cmd(0xFE, "底层握手", "唤醒通信", is_motor=True))
 
     def close_device(self, index):
@@ -456,7 +697,7 @@ class MainWindow(QMainWindow):
             is_motor = True
             num_devices = dev.num_m
         else:
-            title = f"IMU反馈数据曲线图 ({dev.port_name})"
+            title = f"压力传感器反馈数据曲线图 ({dev.port_name})"
             is_motor = False
             num_devices = dev.num_s
 
@@ -522,17 +763,60 @@ class MainWindow(QMainWindow):
         log_window = LogManagerWindow(self)
         log_window.exec_()
 
-    def open_history_graph(self, file_path, is_motor):
+    def open_history_graph(self, file_path=None, is_motor=True):
+        """加载电机或传感器历史数据"""
+        if file_path is None:
+            # 弹出文件选择对话框
+            from PyQt5.QtWidgets import QFileDialog
+            data_dir = os.path.expanduser(f"~/.lqts/analyze_data/{'motor_data' if is_motor else 'sensor_data'}")
+            if not os.path.exists(data_dir):
+                os.makedirs(data_dir, exist_ok=True)
+            file_path, _ = QFileDialog.getOpenFileName(
+                self,
+                f"选择{'电机' if is_motor else '传感器'}历史数据文件",
+                data_dir,
+                "CSV文件 (*.csv)"
+            )
+            if not file_path:
+                return
         title = "历史数据 - " + os.path.basename(file_path)
-        ui = GraphWindowUI(title, is_motor=is_motor, num_devices=1, enable_auto_save=False, is_history_mode=True)
+        ui = GraphWindowUI(title, is_motor=is_motor, num_devices=1,
+                           enable_auto_save=False, is_history_mode=True)
         controller = GraphController(ui, is_history_mode=True)
         ui.set_controller(controller)
         ui.show()
-        # 加载数据（需在窗口显示后执行，确保 UI 已完全初始化）
         QTimer.singleShot(50, lambda: controller._load_csv_file(file_path))
 
+    def open_bend_history_graph(self):
+        """打开弯曲角度历史数据加载窗口（独立实现）"""
+        from UI.graph_window import BendGraphWindow, BendHistoryFileDialog
+        from Core.GraphController import BendGraphController
+
+        dialog = BendHistoryFileDialog(self)
+
+        def on_file_selected(file_path):
+            try:
+                # 可选：复用已有窗口（简单实现：每次新窗口）
+                win = BendGraphWindow(is_history_mode=True, enable_auto_save=False)
+                # 设置窗口标题为文件名
+                win.setWindowTitle(f"历史弯曲数据 - {os.path.basename(file_path)}")
+
+                controller = BendGraphController(win, data_provider=None)
+                win.set_controller(controller)
+
+                # 加载数据（如果失败，内部会弹错误框，不显示窗口）
+                controller.load_history_file(file_path)
+                win.show()
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"加载失败：{str(e)}")
+            finally:
+                dialog.accept()
+
+        dialog.file_selected.connect(on_file_selected)
+        dialog.exec_()
+
     def open_bend_graph(self):
-        """打开当前设备选项卡的喷管弯曲历史曲线窗口"""
+        """打开当前设备选项卡的喷管弯曲数据曲线窗口"""
         current_tab = self.tabs.currentWidget()
         if not current_tab:
             QMessageBox.warning(self, "提示", "没有打开任何设备，请先添加串口设备。")
