@@ -32,12 +32,7 @@ message("Build type: " ${CMAKE_BUILD_TYPE})
 enable_language(C ASM)
 
 # Create an executable object type
-add_executable(${CMAKE_PROJECT_NAME}
-    BSP/Sensor/WT_IMU.c
-    BSP/Sensor/WT_IMU.h
-    BSP/Sensor/REG.h
-
-)
+add_executable(${CMAKE_PROJECT_NAME})
 
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
@@ -51,21 +46,15 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
+    App/Common/pc_cmd_parser.c
+    App/Common/cmd_packer.c
+    App/LYZ/LYZ.c
     App/Tasks/DataTask.c
     App/Tasks/CmdCtrlTask.c
-    App/Common/pc_cmd_parser.c
-    App/Common/sensor_cmd_parser.c
-    App/Common/cmd_packer.c
-    App/CR/CR.c
-    App/CR/kinematic.c
-    App/Common/can_driver.c
-    App/Common/can_driver.h
     BSP/Motor/Motor.c
-    BSP/Sensor/IMU.c
-    App/Common/XV2_cmd_parser.c
-    BSP/Sensor/Sensor.c
-    BSP/Motor/X_V2.c
-    BSP/Motor/motor_limits.c
+    BSP/Motor/SS_R485.c
+    BSP/PWM/servo_pwm.c
+    BSP/Motor/AQMD245NS.c
 )
 
 # Add include paths

@@ -1,73 +1,36 @@
 /**
-*  @file CmdCtrlTask.c
- * @brief 指令控制任务：从队列取串口数据，交给 cmd_parse 解析并执行
- * @author blin
- *
- * 串口2 接收字节经 CmdCtrlQueueHandle 送入本任务，每字节调用 cmd_parse_feed_byte()，
- * 指令解析与电机/传感器控制逻辑在 Common/cmd_parse 中实现。
+ * @file CmdCtrlTask.c
+ * @brief 指令控制任务：字节入 pc_cmd_parser + 50Hz 舵机控制
  */
 
 #include "cmsis_os.h"
 #include "cmsis_os2.h"
 #include "main.h"
-#include "string.h"
-#include "Common/can_driver.h"
+#include "usart.h"
 
 #include "Common/pc_cmd_parser.h"
 #include "Motor/Motor.h"
-#include "stdio.h"
-#include "usart.h"
-#include "Sensor/Sensor.h"
-#define RX_BUF_SIZE 256
-
-bool is_connected = false;   // false:未连接 true:已连接
 
 void StartCmdCtrlTask(void *argument)
 {
-	uint8_t rx_buffer[RX_BUF_SIZE];
-	uint16_t rx_len = 0;
-	float motor_pos[MOTOR_NUM][3] = {0};
-	float sensor_angle[SENSOR_NUM][3] = {0};
-    // 测试串口用
-    uint8_t test_msg[] = "send to usart1\r\n";
-    uint8_t receive;
+    uint8_t byte;
 
-	// 初始化所有数组为 0.0
-	memset(motor_pos, 0, sizeof(motor_pos));
-	memset(sensor_angle, 0, sizeof(sensor_angle));
     for (;;)
     {
-	    // 从CmdCtrlQueue队列接收上位机的高级指令
-	    if (osMessageQueueGet(CmdCtrlQueueHandle, &receive, NULL, 0) == osOK) {
-	        // 优先回显，提高响应性
-	        if (rx_len < RX_BUF_SIZE) {
-	            rx_buffer[rx_len++] = receive;
-	        	// 进入上位机指令解析函数，上位机指令解析函数负责指令解析，而后再将解析好的指令传给电机进行解析
-	        	pc_cmd_parser_feed_byte(receive);
-	        } else {
-                rx_len = 0; // 缓冲区溢出重置
-            }
-	    }
-    	static uint32_t last_send_time_motor = 0;
-    	static uint32_t last_send_time_sensor = 0;
-    	uint32_t current_time_motor = osKernelGetTickCount();
-    	uint32_t current_time_sensor = osKernelGetTickCount();
+        while (osMessageQueueGet(CmdCtrlQueueHandle, &byte, NULL, 0) == osOK)
+        {
+            pc_cmd_parser_feed_byte(byte);
+        }
 
-    	// 每500ms读取一次电机的状态数据
-    	if ((current_time_motor - last_send_time_motor) >= 500)
-    	{
-    		// 电机状态检测，心跳检测
-    		motor_status_check();
-    		last_send_time_motor = current_time_motor;
-    	}
-    	// 每200ms读取一次传感器数据
-    	if ((current_time_sensor - last_send_time_sensor) >= 200)
-    	{
-    		sensor_single_read(0x50);
-    		last_send_time_sensor = current_time_sensor;
-    	}
+        /* 50Hz 舵机控制节拍 */
+        static uint32_t last_tick = 0;
+        uint32_t now = osKernelGetTickCount();
+        if (now - last_tick >= CONTROL_PERIOD_MS)
+        {
+            motor_control_step();
+            last_tick = now;
+        }
 
-    	// 添加小延时，避免过度占用CPU
-    	osDelay(10);
-	  }
+        osDelay(5);
+    }
 }

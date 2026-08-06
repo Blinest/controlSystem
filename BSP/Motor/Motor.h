@@ -1,145 +1,125 @@
 //
-// Created by blin on 2026/3/7.
+// 舵机齿轮控制 — S 弯喷管
+// motor_run(id, direction, speed, angle)
+//   id        — 舵机逻辑 ID（对应不同 IO/TIM 通道）
+//   direction — 0=正转(角度从零增大), 1=反转(角度从零减小)
+//   speed     — 角速度 (°/s)，决定 S 曲线运动时长
+//   angle     — 目标角度 (°)，经五次 S 曲线平滑后到达
 //
 
 #ifndef CONTROLSYSTEM_MOTOR_H
 #define CONTROLSYSTEM_MOTOR_H
-#include "stdint.h"
 
-#include <stdbool.h>
 #include <stdint.h>
-#include "motor_limits.h"
-/**********************************************************
-***	编写作者：Lin
+#include <stdbool.h>
 
-***	qq：1071378062
-**********************************************************/
+/* ==================== 电机数量 ==================== */
+#define MOTOR_NUM  4
 
-#define MOTOR_NUM 4 // 定义电机数量
-#define MOTOR_ID 1 // 定义电机起始 ID
+/* ==================== 控制参数 ==================== */
+#define CONTROL_PERIOD_MS  20      /* 50Hz 控制周期 */
+#define CONTROL_DT          0.02f
+#define MIN_MOVE_TIME       2.5f   /* 最短运动时间 (s) */
 
-// ==================== Emm_V5 步进闭环：反馈指令帧结构体 ====================
-// 帧格式以 `0x6B` 结尾（文档称“校验字节”，发送端固定为 0x6B）
-// 常见 ACK：addr + func + status + 0x6B
-// status：0x02=正确，0xEE=错误（按你提供的表）
+/* ==================== 传动比 ====================
+ * 齿轮1: 小齿轮 20齿 -> 大齿轮 20齿
+ */
+#define SMALL1_TEETH    20.0f
+#define BIG1_TEETH      20.0f
 
-typedef enum {
-	EMM_STATUS_OK  = 0x02,
-	EMM_STATUS_ERR = 0xEE,
-} Emm_Status_t;
+/* ==================== 舵机参数 ==================== */
+#define SERVO_MIN_PULSE         500.0f
+#define SERVO_MAX_PULSE         2500.0f
 
-typedef struct {
-	uint8_t addr;   // 地址
-	uint8_t func;   // 功能码
-	uint8_t status; // 02:正确, EE:错误
-	uint8_t check;  // 固定 0x6B
-} Emm_AckFrame_t;
+#define SERVO1_TOTAL_ANGLE      360.0f
 
-// 读取电机目标位置（功能码 0x33）
-// 正常返回：addr + 0x33 + sign + pos(4字节, 大端) + 0x6B
-// 错误返回：addr + 0x33 + 0xEE + 0x6B
-typedef struct {
-	uint8_t addr;      // 地址
-	uint8_t func;      // 0x33
-	uint8_t sign;      // 符号字节（表格里写“符号(01)”）
-	uint8_t pos_be[4]; // 目标位置，4字节大端
-	uint8_t check;     // 固定 0x6B
-} Emm_posFrame_t;
+/* 舵机安装零点脉冲 (us) */
+#define SERVO1_ZERO_PULSE       1500.0f
 
-typedef union {
-	Emm_AckFrame_t  ack;
-	Emm_posFrame_t tpos;
-	uint8_t raw[16]; // 兜底：保留原始字节
-} Emm_FeedbackFrame_t;
+/* 舵机旋转方向：+1 正向，-1 反向 */
+#define SERVO1_DIR              1.0f
 
-// 4字节大端转 int32（避免依赖编译器对 inline/C99 的支持）
-#define EMMV5_POS_BE_TO_I32(pos_be) \
-((int32_t)( \
-((uint32_t)((pos_be)[0]) << 24) | \
-((uint32_t)((pos_be)[1]) << 16) | \
-((uint32_t)((pos_be)[2]) << 8)  | \
-((uint32_t)((pos_be)[3]) << 0)  \
-))
+/* ==================== 全局电机状态 ==================== */
+typedef struct Servo {
+	uint8_t addr;          /* PWM 舵机地址 */
+    float current_angle;  /* 当前角度 (°) */
+    float target_angle;   /* 目标角度 (°) */
+    float current_speed;
+    float target_speed;
+} Servo;
 
-// ==================== 电机外设反馈数据结构体 ====================
-typedef struct MotorFeedback {
-    uint8_t addr;          // 电机地址
-    uint8_t func;          // 功能码
-	uint8_t total_byte;
-	uint8_t configure;
-	uint8_t vol; //电压
-	uint16_t current; //电流
-	uint16_t encoding; //磁编码器值
-	uint8_t motor_data_target[3];
-    int16_t motor_data_cur[3];   // pos, vel, acc 数据 (单位: 0.01mm, 0.01mm/s, 0.01mm/s^2),目前电机反馈只有位置和速度，无法实现加速度
-    uint8_t state;         // 电机状态 (02: 运行, E2:无响应 ,EE: 异常)，判断时出问题直接判断EE即可
-} MotorFeedback;
-
-// ==================== 步进电机参数 ====================
-
-typedef struct
-{
-	uint8_t daocheng;
-	uint16_t xifen;
-	float step_angle;
-	float current_pos; // mm
-	float target_pos; // mm
-	float current_vel; // mm/s
-	float target_vel; // mm/s
-	float current_acc; //mm/s^2
+typedef struct StepperMotor {
+    uint8_t addr;          /* SS_R485 从机地址 */
+    float current_angle;   /* 大齿轮当前角度 (°) */
+    float target_angle;    /* 大齿轮目标角度 (°) */
+    float current_speed;   /* 大齿轮当前角速度 (°/s) */
+    float target_speed;    /* 大齿轮目标角速度 (°/s) */
+    int32_t current_pulse; /* 当前累计脉冲 */
+    int32_t target_pulse;  /* 目标累计脉冲 */
+    uint16_t target_rpm;   /* 电机侧目标转速 */
+	uint16_t xifen;			/* 电机细分 */
+	float step_angle;		/* 步距角 */
+    bool status;           /* SS_R485 运动中 */
 } StepperMotor;
 
-typedef struct ServoMotor
-{
-	uint8_t daocheng;
-	uint8_t xifen;
-	float step_angle;
-	float current_pos; // mm
-	float target_pos; // mm
-	float current_vel; // mm/s
-	float target_vel; // mm/s
-} ServoMotor;
+typedef struct DCMotor {
+	uint8_t addr;
+	float current_pos;   /* 当前位移量 (mm) */
+	float target_pos;    /* 目标位移量 (mm) */
+	float current_speed;   /* 当前速度 (mm/s) */
+	float target_speed;    /* 目标角速度 (mm/s) */
+	int32_t current_pulse; /* 当前累计脉冲 */
+	int32_t target_pulse;  /* 目标累计脉冲 */
+	uint16_t target_rpm;   /* 电机侧目标转速 */
+	bool status;
+} DCMotor;
 
-// ==================== 全局电机结构体 ====================
-typedef struct GlobalMotor
+typedef union Motor
 {
-	int id;
-	bool state;
+	DCMotor dc_motor;
+	Servo servo;
 	StepperMotor stepper_motor;
-	ServoMotor servo_motor;
-	uint8_t last_response_time;
-	uint8_t timeout_threshold;
-	float current_pos; // rad
-	float current_vel; // rpm
-	float current_acc; // rad/s^2
-	float target_pos;
-	float target_vel;
-	float target_acc;
-	float vel_max;
-	uint8_t size;
-	uint8_t cmd[32];
+} Motor;
+
+
+typedef enum {
+    MOTOR_TYPE_STEPPER = 0,  /* 0、1 号：步进电机 (SS_R485) */
+    MOTOR_TYPE_DC      = 1,  /* 2 号：直流电机 (AQMD245NS) */
+    MOTOR_TYPE_SERVO   = 2,  /* 3 号：舵机 (PWM) */
+} MotorType;
+
+typedef struct {
+    int    id;           /* 舵机逻辑 ID（0-based） */
+	Motor motor;
+    MotorType type;      /* 电机类型 */
+    bool   status;      /* 电机运动中 */
+
+    /* S 曲线运行时状态 */
+    float  start_angle; /* 本段起始角度 (°) */
+    float  t;           /* 本段已用时 (s) */
+    float  total_t;     /* 本段预计总时间 (s) */
 } GlobalMotor;
 
-void motor_init();
-void motor_run(int idx, float vel, float target, uint8_t snf);
-void motor_enable(uint8_t addr, bool enable);
-void motor_stop_all();
-void motor_single_control(uint8_t idx, uint8_t direction, float distance, float vel);
-void motor_sync_control(uint8_t count, uint8_t start_idx, float distance[]);
+/* ==================== 函数声明 ==================== */
 
-typedef void (*Kinematic)(uint8_t R, float theta, float phi, float deltaL[]);
-void motor_kinematic_control(Kinematic kinematic, uint8_t R, float theta, float phi, float deltaL[]);
-void motor_custom_control(uint8_t count, uint8_t *params);
+void motor_init(void);
 
-void motor_full_control(uint8_t addr, uint8_t dir, float dist, float velocity, float acceleration);
+void motor_run(int id, uint8_t direction, float speed, float angle);
 
-// 新增函数 - 添加于2026-03-27 by Psyduck
-void motor_auto_calibrate(uint8_t addr);
+void motor_run_SS(int id, uint8_t direction, float speed, float angle);
+
+void motor_run_SS_abs(int id, uint8_t direction, float speed, float angle);
+
+void motor_run_AQ_abs(int id, uint8_t direction, float speed, float displacement);
+
+void motor_run_servo(int idx, uint8_t direction, float speed, float angle);
+
+void motor_control_step(void);
+
+void motor_stop_all(void);
+
 void motor_status_check(void);
 
-float motor_angle_to_displacement(uint8_t motor_index, float angle);
-float motor_displacement_to_angle(uint8_t motor_index, float displacement);
-
 extern GlobalMotor global_motor[MOTOR_NUM];
-extern MotorFeedback motor_feedback[MOTOR_NUM];
-#endif //CONTROLSYSTEM_MOTOR_H
+
+#endif

@@ -116,7 +116,7 @@ void MX_FREERTOS_Init(void) {
 
   /* Create the queue(s) */
   /* creation of CmdCtrlQueue */
-  CmdCtrlQueueHandle = osMessageQueueNew (256, sizeof(uint8_t), &CmdCtrlQueue_attributes);
+  CmdCtrlQueueHandle = osMessageQueueNew (512, sizeof(uint8_t), &CmdCtrlQueue_attributes);
 
   /* creation of CmdQueue */
   CmdQueueHandle = osMessageQueueNew (32, sizeof(uint8_t), &CmdQueue_attributes);
