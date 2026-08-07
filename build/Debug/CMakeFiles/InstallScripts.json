@@ -1,8 +1,8 @@
 {
 	"InstallScripts" : 
 	[
-		"D:/BaiduSyncdisk/2_work/1_2_management/1_2_1_project/nozzle/control/LYZ-control/build/Debug/cmake_install.cmake",
-		"D:/BaiduSyncdisk/2_work/1_2_management/1_2_1_project/nozzle/control/LYZ-control/build/Debug/cmake/stm32cubemx/cmake_install.cmake"
+		"C:/Users/q3634/Desktop/LYZ/control/build/Debug/cmake_install.cmake",
+		"C:/Users/q3634/Desktop/LYZ/control/build/Debug/cmake/stm32cubemx/cmake_install.cmake"
 	],
 	"Parallel" : false
 }

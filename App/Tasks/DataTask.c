@@ -14,17 +14,21 @@
 void StartDataTask(void *argument)
 {
     static uint32_t last_send_time = 0;
-
+	static uint32_t last_send_time_motor = 0;
     for (;;)
     {
         uint32_t current_time = osKernelGetTickCount();
-        if (current_time - last_send_time >= 200)
+        if (current_time - last_send_time >= 100)
         {
             cmd_packer_send_status_frame();
-        	motor_status_check();
             last_send_time = current_time;
         }
 
+    	if (current_time - last_send_time_motor >= 50)
+    	{
+    		motor_status_check();
+    		last_send_time_motor = current_time;
+    	}
         osDelay(10);
     }
 }

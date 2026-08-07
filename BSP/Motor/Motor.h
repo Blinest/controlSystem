@@ -110,6 +110,8 @@ void motor_run_SS(int id, uint8_t direction, float speed, float angle);
 
 void motor_run_SS_abs(int id, uint8_t direction, float speed, float angle);
 
+void motor_run_AQ(int idx, uint8_t direction, float speed, float displacement);
+
 void motor_run_AQ_abs(int id, uint8_t direction, float speed, float displacement);
 
 void motor_run_servo(int idx, uint8_t direction, float speed, float angle);

@@ -106,7 +106,7 @@ int main(void)
   /* Init scheduler */
   osKernelInitialize();  /* Call init function for freertos objects (in cmsis_os2.c) */
   MX_FREERTOS_Init();
-  UART1_Receive_Start();
+  UART1_RX_Init();
   UART2_Receive_Start();
 
   /* Start scheduler */

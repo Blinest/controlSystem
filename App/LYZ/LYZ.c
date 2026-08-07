@@ -65,9 +65,21 @@ void LYZ_thrust_reverser_kinematic_control(const uint8_t dir, const float theta)
  */
 void LYZ_cross_section_kinematic_control(const uint8_t dir, const float S)
 {
-	//LYZ.current_S = S;
+	LYZ.target_S = S;
 	// 调用底层电推杆绝对位置控制函数
-	motor_run_AQ_abs(2, dir, 15000, S);
+	// if (fabs(S - LYZ.current_S) < 30)
+	// {
+	motor_run_AQ_abs(2, dir, 20000, S);
+	// } else {
+	// 	if (S - LYZ.current_S < 0)
+	// 	{
+	// 		motor_run_AQ(2, 1, 500, S);
+	// 	} else
+	// 	{
+	// 		motor_run_AQ(2, 0, 500, S);
+	// 	}
+	//
+	// }
 }
 
 /**

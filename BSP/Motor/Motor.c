@@ -246,7 +246,44 @@ void motor_run_SS_abs(int idx, uint8_t direction, float speed, float angle)
     m->stepper_motor.status = true;
     global_motor[idx].status = true;
 }
+void motor_run_AQ(int idx, uint8_t direction, float speed, float displacement)
+{
+	if (idx < 0 || idx >= MOTOR_NUM) return;
+	if (global_motor[idx].type != MOTOR_TYPE_DC) return;
 
+	Motor *m = &global_motor[idx].motor;
+	float target = (direction == 0) ? displacement : -displacement;
+	int16_t target_speed = direction == 0 ? aq_speed_to_u16(speed) : -aq_speed_to_u16(speed);
+	uint8_t addr = m->dc_motor.addr;
+	float pulse_f = target * AQM_POSITION_PULSE_PER_MM;
+	int32_t pulse = (int32_t)((pulse_f >= 0.0f) ? (pulse_f + 0.5f) : (pulse_f - 0.5f));
+
+	m->dc_motor.target_pos = target;
+	m->dc_motor.target_speed = speed;
+	m->dc_motor.target_pulse = pulse;
+	m->dc_motor.target_rpm = target_speed;
+
+	aqm_frame_t frame;
+	aqm_set_speed(&frame, addr, target_speed);
+
+	/* 同样先清残留、锁总线并发位置命令时消费回显，避免脏字节污染 position-read ring */
+	uart1_drain_stale_bytes();
+	uart1_bus_lock();
+	bool ok = (platform_uart_send(frame.buf, frame.len) == 0);
+	if (ok)
+	{
+		uint8_t echo[8];                 /* 0x06 写单寄存器回显: addr+func+reg(2)+val(2)+crc(2) */
+		if (platform_uart_recv(echo, sizeof(echo), 50) == 0)
+		{
+			ok = (echo[0] == addr);
+		}
+	}
+	uart1_bus_unlock();
+
+	m->dc_motor.current_speed = speed;
+	m->dc_motor.status = ok;
+	global_motor[idx].status = ok;
+}
 void motor_run_AQ_abs(int idx, uint8_t direction, float speed, float displacement)
 {
     if (idx < 0 || idx >= MOTOR_NUM) return;
@@ -258,6 +295,7 @@ void motor_run_AQ_abs(int idx, uint8_t direction, float speed, float displacemen
     uint8_t addr = m->dc_motor.addr;
     float pulse_f = target * AQM_POSITION_PULSE_PER_MM;
     int32_t pulse = (int32_t)((pulse_f >= 0.0f) ? (pulse_f + 0.5f) : (pulse_f - 0.5f));
+    bool expect_echo = false;
 
     m->dc_motor.target_pos = target;
     m->dc_motor.target_speed = speed;
@@ -266,16 +304,25 @@ void motor_run_AQ_abs(int idx, uint8_t direction, float speed, float displacemen
 
     aqm_frame_t frame;
     aqm_set_position(&frame, addr, target_speed, AQM_POS_MODE_ABS, pulse);
-    if (platform_uart_send(frame.buf, frame.len) != 0)
+
+    /* 写位置命令会得到从机回显应答。若不放总线锁并消费掉这帧回显，
+     * 残留字节会堆在 UART1 ring 里，使后续 motor_status_check 的位置读取
+     * 取到脏数据而 CRC 失败，最终 LYZ.current_S 一直不更新。 */
+    uart1_drain_stale_bytes();
+    uart1_bus_lock();
+    if (platform_uart_send(frame.buf, frame.len) == 0)
     {
-        m->dc_motor.status = false;
-        global_motor[idx].status = false;
-        return;
+        uint8_t echo[8];                 /* 0x10 写多寄存器回显: addr+func+reg(2)+cnt(2)+crc(2) */
+        if (platform_uart_recv(echo, sizeof(echo), 50) == 0)
+        {
+            expect_echo = (echo[0] == addr);
+        }
     }
+    uart1_bus_unlock();
 
     m->dc_motor.current_speed = speed;
-    m->dc_motor.status = true;
-    global_motor[idx].status = true;
+    m->dc_motor.status = expect_echo;
+    global_motor[idx].status = expect_echo;
 }
 
 void motor_run_servo(int idx, uint8_t direction, float speed, float angle)
@@ -394,6 +441,24 @@ void motor_stop_all(void)
 
 void motor_status_check(void)
 {
+    /* 先处理 UART1 上其他设备主动上报的数据。
+     * 这些字节经中断收进 ring 后，被 platform_uart_recv 在等待电机回复时
+     * 以「非目标从机首字节」切进上报缓冲，统一在这里消费，避免缓冲溢出。
+     * TODO: 按具体上报设备的 帧头+定长 解析各字段。
+     * 例：
+     *   uint8_t frame[64]; uint16_t len = sizeof(frame);
+     *   while (uart1_get_reporting_frame(frame, &len) > 0) { ...解析...; len = sizeof(frame); }
+     */
+    {
+        uint8_t frame[64];
+        uint16_t len = sizeof(frame);
+        while (uart1_get_reporting_frame(frame, &len) > 0)
+        {
+            /* 收集到一帧主动上报数据，当前留待按协议解析 */
+            len = sizeof(frame);
+        }
+    }
+
     for (int i = 0; i < MOTOR_NUM; i++)
     {
         if (global_motor[i].type != MOTOR_TYPE_DC) continue;

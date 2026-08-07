@@ -8,9 +8,7 @@
 **********************************************************/
 
 #include "AQMD245NS.h"
-
-extern int platform_uart_send(const uint8_t *data, uint16_t len);
-extern int platform_uart_recv(uint8_t *buf, uint16_t len, uint32_t timeout_ms);
+#include "usart.h"   /* uart1_bus_lock/unlock, platform_uart_send/recv, platform_uart_recv */
 
 /* ==================== CRC-16/Modbus 双查表法 ==================== */
 static unsigned char auchCRCHi[] = {
@@ -179,14 +177,17 @@ bool aqm_parse_position_feedback(const aqm_frame_t *frame,
                                  float *position_mm)
 {
     if (!frame || !pulse || !position_mm || frame->len < 9) return false;
+    if (!check_crc(frame)) return false;                 /* 接收帧校验 */
     if (frame->buf[1] == (MB_FUNC_READ_HOLDING | 0x80)) return false;
     if (frame->buf[1] != MB_FUNC_READ_HOLDING) return false;
     if (frame->buf[2] != 4U) return false;
 
-    uint32_t value = (uint32_t)frame->buf[3] |
-                    ((uint32_t)frame->buf[4] << 8) |
-                    ((uint32_t)frame->buf[5] << 16) |
-                    ((uint32_t)frame->buf[6] << 24);
+    /* 4 字节脉冲为高位在前(大端)，如 FF FF FF F8 -> 0xFFFFFFF8 = -8
+     * 与 aqm_parse_read 的 16 位寄存器解析习惯一致。 */
+    uint32_t value = ((uint32_t)frame->buf[3] << 24) |
+                    ((uint32_t)frame->buf[4] << 16) |
+                    ((uint32_t)frame->buf[5] << 8)  |
+                    ((uint32_t)frame->buf[6]);
 
     *pulse = (int32_t)value;
     *position_mm = (float)(*pulse) / AQM_POSITION_PULSE_PER_MM;
@@ -229,28 +230,48 @@ uint16_t aqm_set_position(aqm_frame_t *frame, uint8_t slave,
 
 uint16_t aqm_read_current_pulse(aqm_frame_t *frame, uint8_t slave)
 {
-    uint16_t len = aqm_build_read(frame, slave, AQM_REG_CURRENT_PULSE, 2);
-
-    if (slave == 0x03U) {
-        frame->buf[6] = 0x44U;
-        frame->buf[7] = 0x36U;
-    }
-    return len;
+    /* 直接由 aqm_build_read 组帧，末尾由 append_crc 按标准
+     * CRC-16/Modbus 自动计算校验字节。此前对 slave=0x03 硬编码
+     * 0x44 0x36 会覆盖掉正确 CRC，导致从机校验失败而拒不回包。 */
+    return aqm_build_read(frame, slave, AQM_REG_CURRENT_PULSE, 2);
 }
 
 int aqm_get_current_position(uint8_t slave, int32_t *pulse, float *position_mm)
 {
     aqm_frame_t tx;
     aqm_frame_t rx;
+    int ret;
+
+    uart1_bus_lock();   /* 保护「发请求→读回复」整条事务，防止 CmdCtrl 写入插入 */
+
+    /* 读取前清掉 ring 里积压的残留字节(如下发电机写命令时从机未消费的回显、
+     * 其他设备主动上报数据)，否则这些脏数据占位会让按定长取的帧错位、CRC 失败。 */
+    uart1_drain_stale_bytes();
 
     aqm_read_current_pulse(&tx, slave);
-    if (platform_uart_send(tx.buf, tx.len) != 0) return -1;
+    if (platform_uart_send(tx.buf, tx.len) != 0)
+    {
+        ret = -1;
+        goto out;
+    }
 
     rx.len = 9;
-    if (platform_uart_recv(rx.buf, rx.len, 50) != 0) return -2;
+    if (platform_uart_recv(rx.buf, rx.len, 50) != 0)
+    {
+        ret = -2;
+        goto out;
+    }
 
-    if (!aqm_parse_position_feedback(&rx, pulse, position_mm)) return -3;
-    return 0;
+    if (!aqm_parse_position_feedback(&rx, pulse, position_mm))
+    {
+        ret = -3;
+        goto out;
+    }
+    ret = 0;
+
+out:
+    uart1_bus_unlock();
+    return ret;
 }
 
 uint16_t aqm_read_pwm(aqm_frame_t *frame, uint8_t slave)

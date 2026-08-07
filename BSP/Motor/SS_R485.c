@@ -29,25 +29,45 @@ static int modbus_read_registers_raw(uint8_t addr, uint16_t start_reg,
     uint8_t rx[5 + count * 2 + 2];  /* 响应: addr+func+byteCount+data+crc */
     uint16_t data_len;
     uint16_t crc_calc, crc_rx;
+    int ret;
 
     /* 构建请求报文 */
     BUILD_READ_REQ(tx, addr, start_reg, count);
 
+    uart1_bus_lock();   /* 保护「发请求→读回复」整条事务，防止与其他任务写入交错 */
+
     /* 发送 */
-    if (platform_uart_send(tx, sizeof(tx)) != 0) return -1;
+    if (platform_uart_send(tx, sizeof(tx)) != 0)
+    {
+        ret = -1;
+        goto out;
+    }
 
     /* 接收: 最小响应长度 5 字节 */
     data_len = (uint16_t)(count * 2);
-    if (platform_uart_recv(rx, 5 + data_len, 500) != 0) return -2;
+    if (platform_uart_recv(rx, (uint16_t)(5 + data_len), 500) != 0)
+    {
+        ret = -2;
+        goto out;
+    }
 
     /* 校验 CRC */
     crc_rx = rx[5 + data_len] | (uint16_t)(rx[5 + data_len + 1] << 8);
     crc_calc = modbus_crc16(rx, (uint16_t)(5 + data_len));
-    if (crc_calc != crc_rx) return -3;
+    if (crc_calc != crc_rx)
+    {
+        ret = -3;
+        goto out;
+    }
 
     /* 复制数据 */
     memcpy(rx_data, rx + 3, data_len);
-    return 0;
+
+    ret = 0;
+
+out:
+    uart1_bus_unlock();
+    return ret;
 }
 
 static int modbus_write_register_raw(uint8_t addr, uint16_t reg_addr,
