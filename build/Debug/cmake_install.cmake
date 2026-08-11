@@ -1,4 +1,4 @@
-# Install script for directory: C:/Users/q3634/Desktop/LYZ/control
+# Install script for directory: D:/BaiduSyncdisk/2_work/1_2_management/1_2_1_project/nozzle/control/LYZ-control
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -39,13 +39,13 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("C:/Users/q3634/Desktop/LYZ/control/build/Debug/cmake/stm32cubemx/cmake_install.cmake")
+  include("D:/BaiduSyncdisk/2_work/1_2_management/1_2_1_project/nozzle/control/LYZ-control/build/Debug/cmake/stm32cubemx/cmake_install.cmake")
 endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
 if(CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "C:/Users/q3634/Desktop/LYZ/control/build/Debug/install_local_manifest.txt"
+  file(WRITE "D:/BaiduSyncdisk/2_work/1_2_management/1_2_1_project/nozzle/control/LYZ-control/build/Debug/install_local_manifest.txt"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()
 if(CMAKE_INSTALL_COMPONENT)
@@ -61,6 +61,6 @@ else()
 endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "C:/Users/q3634/Desktop/LYZ/control/build/Debug/${CMAKE_INSTALL_MANIFEST}"
+  file(WRITE "D:/BaiduSyncdisk/2_work/1_2_management/1_2_1_project/nozzle/control/LYZ-control/build/Debug/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()

@@ -1,7 +1,7 @@
-C:/Users/q3634/Desktop/LYZ/control/build/Debug/CMakeFiles/controlSystem.dir
-C:/Users/q3634/Desktop/LYZ/control/build/Debug/CMakeFiles/edit_cache.dir
-C:/Users/q3634/Desktop/LYZ/control/build/Debug/CMakeFiles/rebuild_cache.dir
-C:/Users/q3634/Desktop/LYZ/control/build/Debug/cmake/stm32cubemx/CMakeFiles/STM32_Drivers.dir
-C:/Users/q3634/Desktop/LYZ/control/build/Debug/cmake/stm32cubemx/CMakeFiles/FreeRTOS.dir
-C:/Users/q3634/Desktop/LYZ/control/build/Debug/cmake/stm32cubemx/CMakeFiles/edit_cache.dir
-C:/Users/q3634/Desktop/LYZ/control/build/Debug/cmake/stm32cubemx/CMakeFiles/rebuild_cache.dir
+D:/BaiduSyncdisk/2_work/1_2_management/1_2_1_project/nozzle/control/LYZ-control/build/Debug/CMakeFiles/controlSystem.dir
+D:/BaiduSyncdisk/2_work/1_2_management/1_2_1_project/nozzle/control/LYZ-control/build/Debug/CMakeFiles/edit_cache.dir
+D:/BaiduSyncdisk/2_work/1_2_management/1_2_1_project/nozzle/control/LYZ-control/build/Debug/CMakeFiles/rebuild_cache.dir
+D:/BaiduSyncdisk/2_work/1_2_management/1_2_1_project/nozzle/control/LYZ-control/build/Debug/cmake/stm32cubemx/CMakeFiles/STM32_Drivers.dir
+D:/BaiduSyncdisk/2_work/1_2_management/1_2_1_project/nozzle/control/LYZ-control/build/Debug/cmake/stm32cubemx/CMakeFiles/FreeRTOS.dir
+D:/BaiduSyncdisk/2_work/1_2_management/1_2_1_project/nozzle/control/LYZ-control/build/Debug/cmake/stm32cubemx/CMakeFiles/edit_cache.dir
+D:/BaiduSyncdisk/2_work/1_2_management/1_2_1_project/nozzle/control/LYZ-control/build/Debug/cmake/stm32cubemx/CMakeFiles/rebuild_cache.dir

@@ -23,6 +23,7 @@ set(CMAKE_C_COMPILER_ARCHITECTURE_ID "armv7")
 
 
 
+
 set(CMAKE_AR "D:/7_code/DevEnv/DevEnv/GNU-tools-for-STM32/bin/arm-none-eabi-ar.exe")
 set(CMAKE_C_COMPILER_AR "D:/7_code/DevEnv/DevEnv/GNU-tools-for-STM32/bin/arm-none-eabi-gcc-ar.exe")
 set(CMAKE_RANLIB "D:/7_code/DevEnv/DevEnv/GNU-tools-for-STM32/bin/arm-none-eabi-ranlib.exe")
@@ -31,9 +32,10 @@ set(CMAKE_LINKER "D:/7_code/DevEnv/DevEnv/GNU-tools-for-STM32/bin/arm-none-eabi-
 set(CMAKE_LINKER_LINK "")
 set(CMAKE_LINKER_LLD "")
 set(CMAKE_C_COMPILER_LINKER "NOTFOUND")
+set(CMAKE_C_COMPILER_LINKER_ARCHITECTURE_FLAGS "")
 set(CMAKE_C_COMPILER_LINKER_ID "")
-set(CMAKE_C_COMPILER_LINKER_VERSION )
-set(CMAKE_C_COMPILER_LINKER_FRONTEND_VARIANT )
+set(CMAKE_C_COMPILER_LINKER_VERSION "")
+set(CMAKE_C_COMPILER_LINKER_FRONTEND_VARIANT "")
 set(CMAKE_MT "")
 set(CMAKE_TAPI "CMAKE_TAPI-NOTFOUND")
 set(CMAKE_COMPILER_IS_GNUCC 1)

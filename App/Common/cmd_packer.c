@@ -23,10 +23,10 @@ extern osMessageQueueId_t SensorMessageQueueHandle;
  * @return 打包后的总长度
  */
 uint16_t cmd_packer_pack_status_frame(uint8_t* frame, GlobalMotor motor[MOTOR_NUM] , uint8_t state) {
-    // 打包帧格式：帧头 + 功能码 + 数据长度 + 电机数量
+    // 打包帧格式：帧头 + 数据长度 + 电机数量
 	uint16_t idx = 0;
-    frame[idx++] = 0xBB; // 帧头
-    frame[idx++] = 0x02; // 功能码 (多传感器批量读取)
+    frame[idx++] = 0xBB; // 帧头，用于设备标识
+    frame[idx++] = 0x02; // 用于设备标识
 
 	// 预留数据长度字节的位置，稍后计算
 	uint16_t data_length_pos = idx;
