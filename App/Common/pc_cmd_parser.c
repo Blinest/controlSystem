@@ -1,349 +1,172 @@
 /**
  * @file pc_cmd_parser.c
- * @brief 上位机指令解析库
- * 
- * 负责解析上位机发送的指令，更新全局结构体，并分发给下位机
- * 
- * @date 2026-03-30
+ * @brief 上位机指令解析器实现
+ *
+ * @date 2026-07-24
  * @author blin
+ * 
+ * 帧格式: [0xAA] [func(1)] [len(1)] [data...] [cs]
+ *   cs = 前面所有字节的和 & 0xFF
+ *
+ * FuncCode:
+ *   0x00  关闭失能   (空)
+ *   0x01  启动使能   (空)
+ *   0x02  紧急停止   (空)
+ *   0x03  喷管偏转   special_addr(1) + direction(1) + angle(2)
+ *         SpecialAddr:
+ *           0xFE  向下偏转
+ *           0xFD  向上偏转
+ *           0xFC  偏转复位
  */
+
 #include "pc_cmd_parser.h"
+#include "SW/SW.h"
 #include "Motor/Motor.h"
-#include "Sensor/Sensor.h"
-#include "CR/kinematic.h"
 #include "usart.h"
-#include "cmsis_os2.h"
-#include "string.h"
-#include <stdio.h>
 
-#include "cmd_packer.h"
+/* 解析缓冲区 */
+#define RX_BUF_SIZE 256
 
-
-
-/* 帧头定义 */
-#define FRAME_HEAD_MOTOR      0xAA    /* 电机指令帧头 */
-#define FRAME_HEAD_SENSOR     0xBB    /* 传感器指令帧头 */
-
-/* 电机功能码定义 */
-typedef enum
-{
-	FUNC_MOTOR_CLOSE	= 0x00,   /* 电机失能 */
-	FUNC_MOTOR_ENABLE   = 0x01,   /* 电机使能 */
-	FUNC_MOTOR_STOP     = 0x02,   /* 多电机停止指令 */
-	FUNC_MOTOR_SINGLE   = 0x03,   /* 单电机控制：addr + direction + distance */
-	FUNC_MOTOR_SYNC     = 0x04,   /* 多电机同步：count + start_addr + distances... */
-	FUNC_MOTOR_KINEMATIC= 0x05,   /* 基于运动学的协同控制（无数据段） */
-	FUNC_MOTOR_CUSTOM   = 0x06,   /* 自定义多电机控制：count + [addr, direction, distance]... */
-} MotorFuncCode_t;
-
-/* 传感器功能码定义 */
-typedef enum
-{
- FUNC_SENSOR_INIT      = 0x00,   /* 传感器初始化（无数据段） */
- FUNC_SENSOR_SINGLE_RD = 0x01,   /* 单传感器数据读取（需要传感器ID） */
- FUNC_SENSOR_MULTI_RD  = 0x02,   /* 多传感器批量读取（无数据段） */
- FUNC_SENSOR_SELF_TEST = 0x03,   /* 传感器自检（需要传感器ID） */
-} SensorFuncCode_t;
-
-/* 帧解析状态机 */
 typedef enum {
- CMD_STATE_HEAD = 0,   /* 等待帧头 0xAA / 0xBB */
- CMD_STATE_FUNC,       /* 已收到帧头，等待功能码 */
- CMD_STATE_LEN,        /* 已收到功能码，等待数据长度 L */
- CMD_STATE_DATA,       /* 已知 L，接收 L 字节数据 */
- CMD_STATE_CHECK       /* 等待校验和字节 */
-} CmdParseState_t;
+    ST_HEAD = 0,
+    ST_FUNC,
+    ST_LEN,
+    ST_DATA,
+    ST_CS
+} ParseState;
 
-/* 解析缓冲区与状态 */
-#define CTRL_BUF_SIZE  128
-static uint8_t s_ctrlBuf[CTRL_BUF_SIZE];
-static uint8_t s_ctrlLen;
-static uint16_t s_ctrlIdx; // 提升为 16 位以确保安全
-static CmdParseState_t s_ctrlState = CMD_STATE_HEAD;
+static uint8_t s_buf[RX_BUF_SIZE];
+static uint8_t s_len;
+static uint8_t s_idx;
+static ParseState s_state = ST_HEAD;
 
-/* 连接状态 */
-extern bool is_connected;
-
-/**
- * @brief 重置控制指令解析状态
- */
-static void pc_cmd_parser_reset(void) {
-    s_ctrlState = CMD_STATE_HEAD;
-    s_ctrlLen = 0;
-    s_ctrlIdx = 0;
-    // 增加：清理缓冲区
-    memset(s_ctrlBuf, 0, CTRL_BUF_SIZE);
+void pc_cmd_parser_reset(void)
+{
+    s_state = ST_HEAD;
+    s_len = 0;
+    s_idx = 0;
 }
 
-/**
- * @brief 解析并执行控制指令
- */
-static void pc_cmd_parse_and_execute(void)
+static void parse_and_execute(void)
 {
-    uint8_t head     = s_ctrlBuf[0];
-    uint8_t func     = s_ctrlBuf[1];
-    uint8_t data_len = s_ctrlLen;
-    if (data_len > 0 && (uint8_t)(3 + data_len) > CTRL_BUF_SIZE)
-        return;
-        
-    switch (head)
+    uint8_t func = s_buf[1];
+    uint8_t dlen = s_buf[2];
+
+    switch (func)
     {
-        case FRAME_HEAD_MOTOR:
-            switch (func)
+    case FUNC_CLOSE:
+        for (int i = 0; i < MOTOR_NUM; i++)
+            SW_kinematic_control(i, 0, (float[]){0.0f, 0.0f});
+        break;
+
+    case FUNC_ENABLE:
+        /* 舵机无需使能，空操作 */
+        break;
+
+    case FUNC_ESTOP:
+        motor_feedback_reset();
+        break;
+
+    case FUNC_BEND:
+        if (dlen >= 4)
+        {
+            uint8_t special = s_buf[3];
+            uint8_t dir     = s_buf[4];
+            int16_t raw     = (int16_t)((s_buf[5] << 8) | s_buf[6]);
+            float angle     = (float)raw / 100.0f;
+
+            if (angle < 0.0f) angle = 0.0f;
+            if (angle > 90.0f) angle = 90.0f;
+
+            switch (special)
             {
-            	case FUNC_MOTOR_CLOSE:
-            		for (int i = 0; i < MOTOR_NUM; i++)
-            		{
-						motor_enable(global_motor[i].id, false);
-            			//vTaskDelay(pdMS_TO_TICKS(10));
-            			HAL_Delay(1);
-					}
-
-            		break;
-
-		        case FUNC_MOTOR_ENABLE: // 电机使能
-            		for (int i = 0; i < MOTOR_NUM; i++)
-            		{
-            			motor_enable(global_motor[i].id, true);
-            			HAL_Delay(1);
-            		}
-            		break;
-
-		        case FUNC_MOTOR_STOP: // 电机停止
-            		motor_stop_all();
-            		break;
-
-                case FUNC_MOTOR_SINGLE:
-                    // 单电机控制: 地址 + 方向 + 距离 + 速度 + 加速度 (1 + 2 + 2 + 2)
-                    if (data_len >= 8) {
-
-                        uint8_t addr = s_ctrlBuf[3];      // 电机地址
-                        uint8_t direction = s_ctrlBuf[4]; // 方向 (1:负方向, 0:正方向)
-                        uint16_t distance = (s_ctrlBuf[5] << 8) | s_ctrlBuf[6]; // 距离
-                        uint16_t vel = (s_ctrlBuf[7] << 8) | s_ctrlBuf[8]; // 速度
-                    	uint16_t acc = (s_ctrlBuf[9] << 8) | s_ctrlBuf[10]; // 加速度
-						// 调用单电机控制函数
-                        motor_single_control(addr - 1, direction, (float)distance / 100.0f, (float)vel / 100.0f);
-                    }
-                    break;
-                    
-                case FUNC_MOTOR_SYNC:
-                    // 多电机同步控制: 数量 + 起始地址 + 距离数组
-                    if (data_len >= 2) {
-                        uint8_t count = s_ctrlBuf[3];      // 电机数量
-                        uint8_t start_idx = s_ctrlBuf[4]; // 起始索引
-	                    // 增加边界检查，防止栈溢出
-	                    if (count > MOTOR_NUM) count = MOTOR_NUM;
-	                    float distances[MOTOR_NUM];
-	                    int temp = 0;
-	                    // 解析距离数组
-	                    for (int i = 0; i < count; i++) {
-	                        distances[i] =(float)((s_ctrlBuf[5 + i*2] << 8) | s_ctrlBuf[6 + i*2]);
-	                        if (distances[i] != 0) temp++;
-						}
-						temp == 0 ? auto_straight() : motor_sync_control(count, start_idx, distances);
-                    }
-                    break;
-                    
-                case FUNC_MOTOR_KINEMATIC:
-                    // 基于运动学的协同控制
-                    // 数据格式: [theta][phi]
-                    if (data_len >= 7) {
-                        uint8_t R = s_ctrlBuf[3]; // 半径参数
-                        float theta = (float)((int16_t)((s_ctrlBuf[4] << 8) | s_ctrlBuf[5])) / 100.0f; // 角度θ
-                        float phi = (float)((int16_t)((s_ctrlBuf[6] << 8) | s_ctrlBuf[7])) / 100.0f;   // 角度φ
-                        
-                        // 计算肌腱长度变化
-                        float deltaL[4] = {0};
-                    	// 调用运动学模型并执行控制指令
-                    	motor_kinematic_control(calculate_L(R, theta, phi , deltaL), R, theta, phi, deltaL);
-                    }
-                    break;
-                    
-                case FUNC_MOTOR_CUSTOM:
-                    // 自定义多电机控制: 数量 + [地址, 方向, 距离]...
-                    if (data_len >= 1) {
-                        uint8_t count = s_ctrlBuf[3]; // 电机数量
-                        
-                        if (data_len >= (1 + count * 3)) {
-                            // 检查是否是特殊指令
-                            if (count == 1) {
-                                uint8_t addr = s_ctrlBuf[4];
-                                if (addr == 0xFE) {
-                                    // 喷管弯曲指令: 地址=0xFE, 方向, 角度
-                                    uint8_t direction = s_ctrlBuf[5];
-                                    uint16_t angle = (s_ctrlBuf[6] << 8) | s_ctrlBuf[7];
-									double val = (double)angle / 100;
-                                    // 调用喷管弯曲控制函数
-                                	char dir = direction == 0? 'u': 'd';
-                                	armBend(1, dir, val);
-
-                                } else if (addr == 0xFD) {
-                                    // 截面收缩指令: 地址=0xFD, 方向, 比例
-                                    uint8_t direction = s_ctrlBuf[5];
-                                    uint16_t scale = (s_ctrlBuf[6] << 8) | s_ctrlBuf[7];
-									float val = (float)scale / 100.f;
-                                	scale_squared(direction, val);
-
-
-                                } else if (data_len >= 8) {
-                                    // 完整电机控制指令: 地址 + 方向 + 距离 + 速度 + 加速度
-                                    uint8_t direction = s_ctrlBuf[5];
-                                    uint16_t dist = (s_ctrlBuf[6] << 8) | s_ctrlBuf[7];
-                                    uint16_t vel = (s_ctrlBuf[9] << 8) | s_ctrlBuf[9];
-                                    uint16_t acc = (s_ctrlBuf[10] << 8) | s_ctrlBuf[11];
-                                    float distance =  direction == 1 ? (float)dist : (float)-dist;
-                                    // 调用完整电机控制函数
-                                    motor_full_control(addr - 1, direction, distance, vel, acc);
-
-                                } else {
-                                    // 正常的自定义电机控制
-                                    uint8_t params[CTRL_BUF_SIZE]; // 增大临时参数缓冲区，防止溢出
-                                    uint8_t param_len = (1 + count * 3);
-                                    if (param_len > CTRL_BUF_SIZE) param_len = CTRL_BUF_SIZE;
-
-                                    for (int i = 0; i < param_len; i++) {
-                                        params[i] = s_ctrlBuf[3 + i];
-                                    }
-                                    
-                                    // 调用自定义控制函数
-                                    motor_custom_control(count, params);
-                                }
-                            } else {
-                                // 正常的自定义电机控制
-                                uint8_t params[CTRL_BUF_SIZE]; // 增大临时参数缓冲区
-                                uint8_t param_len = (1 + count * 3);
-                                if (param_len > CTRL_BUF_SIZE) param_len = CTRL_BUF_SIZE;
-
-                                for (int i = 0; i < param_len; i++) {
-                                    params[i] = s_ctrlBuf[3 + i];
-                                }
-                                
-                                // 调用自定义控制函数
-                                motor_custom_control(count, params);
-                            }
-                        }
-                    }
-                    break;
-                    
-
-                    
-                default:
-                    break;
-            }
-            break;
-        case FRAME_HEAD_SENSOR:
-            switch (func)
-            {
-                case FUNC_SENSOR_INIT:
-                    // 传感器初始化
-                    printf("[CMD] 传感器初始化\n");
-                    sensor_init();
-                    break;
-                    
-                case FUNC_SENSOR_SINGLE_RD:
-                    // 单传感器数据读取
-                    if (data_len >= 1) {
-                        uint8_t sensor_id = s_ctrlBuf[3];
-                        sensor_single_read(sensor_id);
-                    }
-                    break;
-                    
-                case FUNC_SENSOR_MULTI_RD:
-                    // 多传感器批量读取
-                    sensor_multi_read();
-                    break;
-                    
-                case FUNC_SENSOR_SELF_TEST:
-                    // 传感器自检
-                    if (data_len >= 1) {
-                        uint8_t sensor_id = s_ctrlBuf[3];
-                        sensor_self_test(sensor_id);
-                    }
-                    break;
-                default:
-                    break;
-            }
-            break;
-        default:
-            break;
-    }
-}
-
-/**
- * @brief 上位机指令解析函数 (PC -> STM32)，将电机数据存入临时数据缓冲区，用于后续执行
- * @param byte 接收到的单字节数据
- */
-void pc_cmd_parser_feed_byte(uint8_t byte)
-{
-    uint8_t receive = byte;
-    
-    switch (s_ctrlState)
-    {
-        case CMD_STATE_HEAD:
-            if (receive == FRAME_HEAD_MOTOR || receive == FRAME_HEAD_SENSOR)
-            {
-                // 解析下一个字节，并将帧头存入发送数据缓冲区
-                s_ctrlBuf[0] = receive;
-                s_ctrlIdx = 1;
-                s_ctrlState = CMD_STATE_FUNC;
-            }
-            break;
-            
-        /* 根据帧头进行不同的控制操作 */
-        case CMD_STATE_FUNC:
-            /* 保存功能码 */
-            s_ctrlBuf[1] = receive;
-            s_ctrlLen = 2;
-    		s_ctrlState = CMD_STATE_LEN;
-            break;
-            
-        case CMD_STATE_LEN:
-            s_ctrlLen = receive;
-            s_ctrlBuf[2] = receive;
-            
-            if (s_ctrlLen + 4 > CTRL_BUF_SIZE) // 帧头(1) + 功能(1) + 长度(1) + 校验(1)
-            {
-                pc_cmd_parser_reset();
+            case SPECIAL_DOWN:
+                SW_kinematic_control(0, 0, ((float[]){angle, SW.joint_space.target_theta[1]}));
+                break;
+            case SPECIAL_UP:
+                SW_kinematic_control(1, dir, ((float[]){SW.joint_space.target_theta[0], angle}));
+                break;
+            case SPECIAL_RESET:
+                for (int i = 0; i < MOTOR_NUM; i++)
+                    SW_kinematic_control(i, 0, ((float[]){0.0f, 0.0f}));
+                break;
+            default:
                 break;
             }
-            
-            s_ctrlIdx = 3;
-            s_ctrlState = (s_ctrlLen == 0) ? CMD_STATE_CHECK : CMD_STATE_DATA;
-            break;
-            
-        case CMD_STATE_DATA:
-            s_ctrlBuf[s_ctrlIdx++] = receive;
-            
-            if (s_ctrlIdx >= (uint8_t)(3 + s_ctrlLen)) // 去除校验位
-            {
-                s_ctrlState = CMD_STATE_CHECK;
-            }
-            break;
-            
-        case CMD_STATE_CHECK:
-            s_ctrlBuf[s_ctrlIdx] = receive; // 存入校验位
-            uint16_t sum = 0;
-            
-            for (int i = 0; i < s_ctrlIdx; i++) 
-                sum += s_ctrlBuf[i];
-                
-            if ((sum & 0xFF) == receive) {
-                is_connected = true; // 收到暗号，解锁连接
-                pc_cmd_parse_and_execute();
-            }
-            pc_cmd_parser_reset();
-            break;
-            
-        default:
-            pc_cmd_parser_reset();
-            break;
+        }
+        break;
+
+    case FUNC_CYCLE:
+        /* 循环动作组: [0x00]=启动, [0x01]=关闭并回初始状态 */
+        if (dlen >= 1)
+        {
+            if (s_buf[3] == CYCLE_START)
+                SW_action_group_start_default();
+            else if (s_buf[3] == CYCLE_STOP)
+                SW_action_group_stop();
+        }
+        break;
+    case FUNC_PARA:
+        /* 参数设置: 峰值速度(1, °/s) — 全局统一作用于所有电机, 限幅 0~50 */
+        if (dlen >= 1)
+        {
+
+            float vel = (float)s_buf[3];
+            if (vel > SERVO_SPEED_MAX) vel = SERVO_SPEED_MAX;
+            for (int i = 0; i < MOTOR_NUM; i++)
+                global_motor[i].servo.target_speed = vel;
+        }
+        break;
     }
 }
 
-/**
- * @brief 重置上位机指令解析器
- */
-void pc_cmd_parser_reset_all(void) {
-    pc_cmd_parser_reset();
+void pc_cmd_parser_feed_byte(uint8_t byte)
+{
+    switch (s_state)
+    {
+    case ST_HEAD:
+        if (byte == FRAME_HEAD)
+        {
+            s_buf[0] = byte;
+            s_idx = 1;
+            s_state = ST_FUNC;
+        }
+        break;
+
+    case ST_FUNC:
+        s_buf[1] = byte;
+        s_len = 2;
+        s_state = ST_LEN;
+        break;
+
+    case ST_LEN:
+        s_len = byte;
+        s_buf[2] = byte;
+        if (s_len + 4 > RX_BUF_SIZE) { pc_cmd_parser_reset(); break; }
+        s_idx = 3;
+        s_state = (s_len == 0) ? ST_CS : ST_DATA;
+        break;
+
+    case ST_DATA:
+        if (s_idx < RX_BUF_SIZE)
+            s_buf[s_idx++] = byte;
+        if (s_idx >= (uint8_t)(3 + s_len))
+            s_state = ST_CS;
+        break;
+
+    case ST_CS:
+    {
+        s_buf[s_idx] = byte;
+        uint16_t sum = 0;
+        for (int i = 0; i < s_idx; i++)
+            sum += s_buf[i];
+        if ((sum & 0xFF) == byte)
+            parse_and_execute();
+        pc_cmd_parser_reset();
+        break;
+    }
+    default:
+        pc_cmd_parser_reset();
+        break;
+    }
 }

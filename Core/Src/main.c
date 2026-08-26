@@ -27,8 +27,8 @@
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 
-#include "CR/CR.h"
-#include "../App/Common/can_driver.h"
+#include "SW/SW.h"
+#include "PWM/servo_pwm.h"
 #include "string.h"
 /* USER CODE END Includes */
 
@@ -94,17 +94,14 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_USART1_UART_Init();
+  // MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   MX_CAN_Init();
   /* USER CODE BEGIN 2 */
-  /* 在调度器启动前挂上 USART2 接收中断，否则 HAL 不会在 RXNE 中断里调用 HAL_UART_RxCpltCallback */
+  /* 启动串口2的中断接收 → 字节入 CmdCtrlQueue */
   UART2_Receive_Start();
-  // 启动串口1的中断接收
-  UART1_Receive_Start();
-  // 启动 CAN
-  CAN_Driver_Init();
-  LQTS_init();
+  // 初始化 SW 系统（内含 motor_init）
+  SW_init();
 
   /* USER CODE END 2 */
 

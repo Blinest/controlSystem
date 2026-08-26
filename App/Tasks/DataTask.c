@@ -1,97 +1,35 @@
 /**
  * @file DataTask.c
- * @brief 数据任务：负责 USART1 RX (传感器反馈) 和 USART2 TX (发送至 PC)
- *
- * 任务流程：
- * 1. 监听 CmdDataQueue (USART1 RX)，解析外设反馈并更新全局状态。
- * 2. 将系统状态打包并通过 SensorMessageQueue 缓冲。
- * 3. 轮询 SensorMessageQueue，将反馈字节发送至 USART2 TX (上位机)。
- * 
- * 简化版本：将复杂逻辑移到 DataTaskUtils 库中
- * 
- * @date 2026-03-30
- * @author Psyduck
+ * @brief 数据任务 — 每 200ms 打包电机状态经 USART1 发送给上位机
  */
-#include <stdio.h>
-#include "cmsis_os.h"
+#include "cmsis_os2.h"
 #include "FreeRTOS.h"
 #include "task.h"
-#include "usart.h"
 #include "Motor/Motor.h"
-#include "Sensor/Sensor.h"
-#include "Common/XV2_cmd_parser.h"
 #include "Common/cmd_packer.h"
-#include "Common/can_driver.h"
-#include "CR/CR.h"
-#include "Sensor/WT_IMU.h"
-#include "Sensor/IMU.h"
+#include "usart.h"
 
-#define RX_BUF_SIZE 256
+#define DATA_BUF_SIZE 256
 
 void StartDataTask(void *argument)
 {
-    uint8_t rx_byte = 0;
-    uint8_t tx_byte = 0;
-    for(;;)
+    static uint32_t last_send_time = 0;
+
+    for (;;)
     {
-        // ====================================
-        // 1. 数据采集流: 从外设 (CAN) 接收并处理
-        // ====================================
-       while (osMessageQueueGet(CmdDataQueueHandle, &rx_byte, NULL, 0) == osOK)
-        {
-       		// 传感器指令解析函数
-        	// sensor_data_parser_feed_byte(rx_byte);
-        	// Usart_SendString(&huart2, &rx_byte, 1);
-       		WitSerialDataIn(rx_byte);
-        }
-    	global_sensor[0].x = sReg[Roll+0] / 32768.0f * 180.0f;
-    	global_sensor[0].y = sReg[Roll+1] / 32768.0f * 180.0f;
-    	global_sensor[0].z = sReg[Roll+2] / 32768.0f * 180.0f;
-        
-        // ====================================
-        // 2. 数据发送流: 打包数据发送给上位机
-        // ====================================
-        // 检查是否有数据需要发送
-        static uint32_t last_send_time = 0;
         uint32_t current_time = osKernelGetTickCount();
-        
-        // 每100ms发送一次数据到队列 SensorMessageQueue
-        if ((current_time - last_send_time) >= 100)
+        if (current_time - last_send_time >= 200)
         {
-            // 打包系统状态数据 (使用 static 以节省堆栈空间)
-            static uint8_t packed_frame[128];
-        	const uint8_t state = lqts.state;
-            const uint16_t frame_len = cmd_packer_pack_status_frame(packed_frame, global_motor, global_sensor, &lqts, state);
-            
-            // 发送到队列
-            for (int i = 0; i < frame_len; i++)
-            {
-                osMessageQueuePut(SensorMessageQueueHandle, &packed_frame[i], 0, 0);
-            }
+            static uint8_t packed_frame[DATA_BUF_SIZE];
+            uint8_t state = 1;  /* 正常工作状态 */
+            uint16_t frame_len = cmd_packer_pack_status_frame(packed_frame, global_motor, state);
+
+            /* 通过 USART2 发送给上位机 */
+            Usart_SendString(&huart2, packed_frame, frame_len);
+
             last_send_time = current_time;
         }
 
-    	// 批量发送数据
-    	static uint8_t tx_buffer[256];
-    	static uint16_t tx_buffer_len = 0;
-
-    	// 提取并发送
-    	tx_buffer_len = 0;
-    	while (osMessageQueueGet(SensorMessageQueueHandle, &tx_byte, NULL, 0) == osOK && tx_buffer_len < 256)
-    	{
-    		tx_buffer[tx_buffer_len++] = tx_byte;
-    	}
-    	if (tx_buffer_len > 0) {
-    		Usart_SendString(&huart2, tx_buffer, tx_buffer_len);
-    	}
-
-    	// uint32_t esr = CAN1->ESR;
-    	// uint32_t tec = (esr >> 16) & 0xFF;
-    	// uint32_t rec = (esr >> 24) & 0xFF;
-    	// char buffer[64];
-    	// sprintf(buffer, "CAN ESR: 0x%08lX, TEC=%3ld, REC=%3ld\r\n", esr, tec, rec);
-    	// Usart_SendString(&huart2, (uint8_t*)buffer, strlen(buffer));
-        osDelay(10); // 增加延时，降低 CPU 占用并给串口发送留出时间
+        osDelay(10);
     }
 }
-
